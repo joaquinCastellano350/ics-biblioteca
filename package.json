@@ -1,0 +1,14 @@
+{
+  "name": "ics-biblioteca",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Biblioteca Digital Universitaria",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11"
+  }
+}

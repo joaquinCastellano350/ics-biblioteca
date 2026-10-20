@@ -1,0 +1,19 @@
+erDiagram
+  FACULTIES ||--o{ USERS : pertenece
+  USERS ||--o{ SESSIONS : inicia
+  BOOKS ||--|{ BOOK_AUTHORS : tiene
+  AUTHORS ||--o{ BOOK_AUTHORS : escribe
+  BOOKS ||--|{ BOOK_SUBJECTS : clasifica
+  SUBJECTS ||--o{ BOOK_SUBJECTS : agrupa
+  USERS ||--o{ QUEUE_ENTRIES : espera
+  BOOKS ||--o{ QUEUE_ENTRIES : ordena
+  QUEUE_ENTRIES ||--o| RESERVATIONS : recibe
+  USERS ||--o{ RESERVATIONS : destinatario
+  BOOKS ||--o{ RESERVATIONS : retiene
+  USERS ||--o{ LOANS : obtiene
+  BOOKS ||--o{ LOANS : habilita
+  RESERVATIONS o|--o| LOANS : origina
+  USERS ||--o{ NOTIFICATION_OUTBOX : recibe
+  LOANS o|--o{ NOTIFICATION_OUTBOX : recordatorio
+  RESERVATIONS o|--o{ NOTIFICATION_OUTBOX : turno
+  QUEUE_ENTRIES o|--o{ NOTIFICATION_OUTBOX : rechazo

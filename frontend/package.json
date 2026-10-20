@@ -1,0 +1,6 @@
+{
+  "name": "@ics-biblioteca/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interfaz web de la Biblioteca Digital Universitaria"
+}
