@@ -1,0 +1,42 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
+.title-search {
+  display: grid;
+  min-width: 0;
+  gap: 0.45rem;
+}
+
+.title-search label {
+  color: var(--p-text-color, #243c42);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.search-input {
+  position: relative;
+  display: block;
+}
+
+.search-input > i {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 0.9rem;
+  color: var(--p-text-muted-color, #6a7a73);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search-input input {
+  width: 100%;
+  padding-left: 2.5rem;
+}
+
+.no-results {
+  margin: 1.5rem 0 0;
+  color: var(--p-text-muted-color, #4d615c);
+  text-align: center;
+}

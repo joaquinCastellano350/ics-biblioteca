@@ -1,0 +1,19 @@
+<section class="title-search" aria-label="Buscar libros por título">
+  <label for="catalog-title-search">Buscar por título</label>
+  <span class="search-input">
+    <i class="pi pi-search" aria-hidden="true"></i>
+    <input
+      id="catalog-title-search"
+      pInputText
+      type="search"
+      autocomplete="off"
+      placeholder="Buscar por título del libro…"
+      [ngModel]="titleQuery"
+      (ngModelChange)="onTitleQueryChange($event)"
+    />
+  </span>
+</section>
+
+@if (showNoResults) {
+  <p class="no-results" role="status">Sin resultados</p>
+}
