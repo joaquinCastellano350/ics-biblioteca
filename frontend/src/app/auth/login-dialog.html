@@ -1,0 +1,46 @@
+<p-dialog header="Qué bueno verte de nuevo." styleClass="login-dialog"
+  [style]="dialogStyle"
+  [visible]="auth.loginRequested()" (visibleChange)="!$event && close()" (onHide)="afterHide()" (onShow)="focusEmail()"
+  [modal]="true" [draggable]="false" [resizable]="false" [blockScroll]="true" [closeOnEscape]="true"
+  [pt]="dialogParts"
+  closeAriaLabel="Cerrar inicio de sesión">
+  <ng-template #header let-titleId="ariaLabelledBy">
+    <div class="login-heading">
+      <span class="modal-symbol"><i class="pi pi-book" aria-hidden="true"></i></span>
+      <h2 [id]="titleId">Qué bueno verte de nuevo.</h2>
+    </div>
+  </ng-template>
+  <p id="login-description">Ingresá para continuar con tus lecturas.</p>
+  <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <div class="field">
+      <label for="login-email">Correo electrónico</label>
+      <input #emailInput pInputText id="login-email" type="email" formControlName="email" autocomplete="username"
+        placeholder="nombre@ejemplo.com" required [fluid]="true"
+        [invalid]="form.controls.email.touched && form.controls.email.invalid"
+        [attr.aria-describedby]="form.controls.email.touched && form.controls.email.invalid ? 'email-error' : null" />
+      @if (form.controls.email.touched && form.controls.email.hasError('required')) {
+        <p class="field-error" id="email-error">Ingresá tu correo electrónico.</p>
+      }
+    </div>
+    <div class="field">
+      <label for="login-password">Contraseña</label>
+      <div class="password-field">
+        <input pInputPassword id="login-password" formControlName="password" autocomplete="current-password" required
+          [fluid]="true" [mask]="passwordMasked()" [invalid]="form.controls.password.touched && form.controls.password.invalid"
+          [attr.aria-describedby]="form.controls.password.touched && form.controls.password.invalid ? 'password-error' : null" />
+        <p-button [icon]="passwordMasked() ? 'pi pi-eye' : 'pi pi-eye-slash'" severity="secondary" variant="text"
+          [ariaLabel]="passwordMasked() ? 'Mostrar contraseña' : 'Ocultar contraseña'"
+          (onClick)="passwordMasked.set(!passwordMasked())" />
+      </div>
+      @if (form.controls.password.touched && form.controls.password.hasError('required')) {
+        <p class="field-error" id="password-error">Ingresá tu contraseña.</p>
+      }
+    </div>
+    @if (error()) { <p-message severity="error" styleClass="login-error">{{ error() }}</p-message> }
+    <div class="actions">
+      <p-button type="submit" [label]="pending() ? 'Ingresando…' : 'Ingresar'" [ariaLabel]="pending() ? 'Ingresando…' : 'Ingresar'" icon="pi pi-arrow-right" iconPos="right"
+        [disabled]="pending()" [loading]="pending()" [fluid]="true" />
+      <p-button label="Cancelar" severity="secondary" variant="text" (onClick)="close()" [fluid]="true" />
+    </div>
+  </form>
+</p-dialog>
