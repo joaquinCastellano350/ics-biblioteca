@@ -47,8 +47,12 @@ Object Storage usa el SDK S3 con direccionamiento por ruta, requerido por Neon. 
 
 ## Modelo de datos
 
-El esquema Prisma declara el proveedor PostgreSQL y el generador, sin tablas de dominio. Prisma 7.10 permite generar ese cliente mediante `prisma generate` y usar consultas de conectividad sin adelantar el diseño de cuentas, sesiones o circulación. No se ejecutaron migraciones ni `db push` en esta puesta en marcha.
+El [contrato de autenticación y sesión](../docs/contrato-autenticacion.md) define la integración compartida por SCRUM-7 a SCRUM-11. SCRUM-8 implementa `POST /api/auth/login`, `GET /api/auth/session` y la base pública `GET /api/universities`. Registro y logout quedan para sus historias. Con `NODE_ENV=production`, Express sirve el build de Angular después de las rutas `/api`, según ADR-0002. Compilar ambos workspaces con `npm run build` desde la raíz antes de arrancar.
 
-Las migraciones posteriores se versionarán en `prisma/migrations/`, siguiendo [la propuesta de datos](../docs/modelo-de-datos.md). Usarán la conexión directa y deberán revisarse antes de aplicarse a la rama correspondiente.
+El esquema Prisma incluye `universities`, `users` y `sessions`, alineados con Confluence v4. La primera migración conserva un solo `email` normalizado y único, las FK y el vencimiento absoluto de seis horas. La sesión guarda solo el SHA-256 del token; las contraseñas usan Argon2id. Las tablas de circulación pertenecen a historias posteriores.
+
+El módulo `src/accounts/` se organiza en `accounts.controller.ts` (rutas, cookies, respuestas y errores HTTP), `accounts.service.ts` (validación y reglas de autenticación), `accounts.repository.ts` (contrato de persistencia) y `prisma-accounts.repository.ts` (consultas y transacciones con Prisma). El service depende del contrato, no de Prisma; define la duración mediante la constante compartida en `sessions.ts`. El repository obtiene el reloj de PostgreSQL y persiste las fechas dentro de la transacción. `server.ts` conecta esas dependencias.
+
+Las migraciones se versionan en `prisma/migrations/` y usan `DATABASE_URL_UNPOOLED`. `npm run db:migrate --workspace backend` aplica migraciones versionadas; `npm run db:seed --workspace backend` carga las treinta instituciones de SCRUM-7 con UUID estables y sin duplicarlas. La creación de cuentas corresponde al registro de SCRUM-7. Las pruebas de integración usan la configuración habitual de entorno y eliminan únicamente la cuenta y las sesiones que crean. Ver [la guía de SCRUM-8](../docs/desarrollo-scrum-8.md).
 
 Administrar nuevas dependencias desde la raíz siguiendo el [README del repositorio](../README.md).

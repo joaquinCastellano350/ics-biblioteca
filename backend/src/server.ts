@@ -2,9 +2,17 @@ import { createApp } from './app.js';
 import { checkDatabase, database } from './database.js';
 import { serverPort } from './env.js';
 import { checkStorage, storage } from './storage.js';
+import { fileURLToPath } from 'node:url';
+import { AccountsService } from './accounts/accounts.service.js';
+import { PrismaAccountsRepository } from './accounts/prisma-accounts.repository.js';
 
 const port = serverPort();
-const server = createApp({ checkDatabase, checkStorage }).listen(port, () => {
+const production = process.env['NODE_ENV'] === 'production';
+const server = createApp({
+  checkDatabase, checkStorage,
+  accounts: new AccountsService(new PrismaAccountsRepository(database)), production,
+  ...(production ? { frontendPath: fileURLToPath(new URL('../../frontend/dist/biblioteca/browser/', import.meta.url)) } : {}),
+}).listen(port, () => {
   console.log(`API disponible en el puerto ${port}.`);
 });
 
