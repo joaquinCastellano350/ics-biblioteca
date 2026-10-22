@@ -1,5 +1,5 @@
-<section class="title-search" aria-label="Buscar libros por título">
-  <label for="catalog-title-search">Buscar por título</label>
+<section class="search-field" aria-label="Buscar libros por título">
+  <label class="visually-hidden" for="catalog-title-search">Buscar por título</label>
   <span class="search-input">
     <i class="pi pi-search" aria-hidden="true"></i>
     <input
@@ -15,5 +15,8 @@
 </section>
 
 @if (showNoResults) {
-  <p class="no-results" role="status">Sin resultados</p>
+  <div class="no-results" role="status">
+    <i class="pi pi-search" aria-hidden="true"></i>
+    <span>Sin resultados</span>
+  </div>
 }
