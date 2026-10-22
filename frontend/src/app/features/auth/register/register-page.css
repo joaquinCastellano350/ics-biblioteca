@@ -1,0 +1,33 @@
+:host {
+  display: block;
+  padding: clamp(1rem, 4vw, 2.5rem);
+  font-family: var(--bdu-sans, system-ui, sans-serif);
+  color: var(--bdu-text, #243c42);
+}
+
+.register-page { width: 100%; max-width: 42rem; margin: 0 auto; }
+nav { margin-bottom: 1.25rem; }
+nav a { display: inline-block; padding: .5rem 0; text-underline-offset: .2em; }
+.preview-notice {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--bdu-line, #dfe4dc);
+  border-left: .25rem solid var(--bdu-ink, #193e46);
+  border-radius: .5rem;
+  background: #e9eee5;
+  overflow-wrap: anywhere;
+}
+.preview-notice h2 { margin: 0 0 .5rem; font-size: 1.125rem; }
+.preview-notice p { margin: 0; }
+.retry-actions { margin-top: 1rem; }
+.retry-button {
+  padding: .75rem 1rem;
+  border: 1px solid var(--bdu-ink, #193e46);
+  border-radius: .5rem;
+  background: #fff;
+  color: var(--bdu-ink, #193e46);
+  font: inherit;
+  cursor: pointer;
+}
+.retry-button:hover { background: #e9eee5; }
+.retry-button:focus-visible { outline: 2px solid #8ba56b; outline-offset: 3px; }

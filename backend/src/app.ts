@@ -1,8 +1,10 @@
 import express from 'express';
+import type { University } from './modules/accounts/universities.repository.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
   checkStorage: () => Promise<void>;
+  listUniversities: () => Promise<University[]>;
 }
 
 export function createApp(services: AppServices) {
@@ -24,6 +26,20 @@ export function createApp(services: AppServices) {
       database: database.status === 'fulfilled' ? 'ok' : 'unavailable',
       storage: storage.status === 'fulfilled' ? 'ok' : 'unavailable',
     });
+  });
+
+  app.get('/api/universities', async (_request, response) => {
+    try {
+      const universities = await services.listUniversities();
+      response.json({ universities });
+    } catch {
+      response.status(503).json({
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'No se pudieron consultar las facultades. Intentá nuevamente más tarde.',
+        },
+      });
+    }
   });
 
   app.use((_request, response) => {

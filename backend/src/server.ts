@@ -2,9 +2,10 @@ import { createApp } from './app.js';
 import { checkDatabase, database } from './database.js';
 import { serverPort } from './env.js';
 import { checkStorage, storage } from './storage.js';
+import { listUniversities } from './modules/accounts/universities.repository.js';
 
 const port = serverPort();
-const server = createApp({ checkDatabase, checkStorage }).listen(port, () => {
+const server = createApp({ checkDatabase, checkStorage, listUniversities }).listen(port, () => {
   console.log(`API disponible en el puerto ${port}.`);
 });
 
