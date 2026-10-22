@@ -4,6 +4,10 @@ build/
 .next/
 coverage/
 *.tsbuildinfo
+.angular/
+out-tsc/
+backend/src/generated/
+.neon
 .env
 .env.*
 !.env.example
@@ -12,3 +16,4 @@ coverage/
 *.log
 .DS_Store
 Thumbs.db
+.neon

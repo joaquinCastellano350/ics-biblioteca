@@ -1,0 +1,13 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// La puesta en marcha comprueba la conexión sin crear tablas de dominio.
+// Las migraciones se definirán al implementar las historias correspondientes.

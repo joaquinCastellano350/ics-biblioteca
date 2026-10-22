@@ -2,13 +2,27 @@
   "name": "ics-biblioteca",
   "version": "0.1.0",
   "private": true,
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "check:services": "npm run check:services --workspace backend"
+  },
   "description": "Biblioteca Digital Universitaria",
   "workspaces": [
     "frontend",
     "backend"
   ],
+  "overrides": {
+    "@angular/build": {
+      "vite": "8.3.3"
+    }
+  },
   "engines": {
-    "node": ">=24",
+    "node": "^24.15.0",
     "npm": ">=11"
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.3",
+    "@neon/env": "^1.6.4"
   }
 }

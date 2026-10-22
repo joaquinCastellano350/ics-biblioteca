@@ -24,7 +24,7 @@ Cada aplicación mantiene sus dependencias en su propio `package.json`. La insta
 
 ## Preparación
 
-Usar Node.js 24 y npm 11 o superior. El archivo `.nvmrc` indica la versión de Node para quienes usen un gestor compatible.
+Usar Node.js 24.15 o superior dentro de la rama 24 y npm 11 o superior. Angular 22 requiere esa versión mínima de Node. El archivo `.nvmrc` indica la rama de Node para quienes usen un gestor compatible.
 
 Desde la raíz del repositorio:
 
@@ -48,11 +48,38 @@ Para una dependencia de desarrollo de una aplicación, agregar `--save-dev`. Par
 
 Versionar los cambios del `package.json` correspondiente junto con el `package-lock.json` de la raíz.
 
-## Estado inicial
+## Estado de las aplicaciones
 
-El scaffolding define los dos paquetes y sus carpetas de código. La elección de frameworks y la configuración de los comandos `dev`, `build` y `test` corresponden al siguiente paso; todavía no hay aplicaciones ejecutables ni pruebas configuradas.
+Desde la raíz:
 
-Cuando una aplicación incorpore sus scripts, se podrán ejecutar desde la raíz con `npm run dev --workspace frontend` o `npm run dev --workspace backend`, por ejemplo. Para ejecutar un script en ambas, usar `npm run build --workspaces` una vez que ambas lo definan.
+```sh
+npm run dev --workspace frontend
+npm run dev --workspace backend
+npm run build
+npm test
+npm run start --workspace backend
+npm run check:services
+```
+
+Ejecutar los dos comandos `dev` en terminales separadas. Angular escucha en el puerto 4200 y reenvía `/api/**` a Express en el puerto 3000 mediante un proxy de desarrollo. `start` requiere compilar antes; `check:services` requiere que la API esté en marcha.
+
+Ver [la documentación del frontend](frontend/README.md) y [la del backend](backend/README.md) para los detalles de desarrollo, variables y publicación.
+
+## Neon
+
+El proyecto vinculado es `odd-base-60911651`, de la organización `org-icy-haze-28862920`, en `aws-us-east-2`. La puesta en marcha usa la rama `production` indicada en el comando de configuración. `neon.ts` declara el bucket privado `assets`; `.neon` conserva la vinculación local y se excluye de Git.
+
+Para preparar otro checkout, instalar la CLI oficial (`npm i -g neon@latest`), completar `neon login` y ejecutar desde la raíz:
+
+```sh
+neon link -y --org-id org-icy-haze-28862920 --project-id odd-base-60911651 --branch production --no-env-pull
+neon config plan
+neon deploy
+```
+
+`config plan` muestra los cambios antes de aplicarlos. `deploy` aplica `neon.ts` y descarga las variables en `.env.local` o `.env`, ambos ignorados por Git. Si los servicios ya están aprovisionados, basta con `neon env pull` para recuperar esas variables.
+
+Las credenciales de PostgreSQL y del bucket permanecen en el backend. [`.env.example`](.env.example) documenta los nombres sin valores reales. Esta puesta en marcha comprueba conectividad sin crear tablas de dominio; las migraciones corresponden a las historias siguientes.
 
 Las reglas de cupos, préstamos, reservas y vencimientos pertenecen al backend. La integración con el frontend se realizará mediante un contrato de API explícito.
 
@@ -61,3 +88,4 @@ Las reglas de cupos, préstamos, reservas y vencimientos pertenecen al backend. 
 - [Vocabulario del dominio](CONTEXT.md).
 - [Propuesta de modelo de datos](docs/modelo-de-datos.md).
 - [Diagrama del modelo](docs/modelo-de-datos.mmd).
+- [Registro de verificación de la puesta en marcha](docs/verificacion-inicial.md).

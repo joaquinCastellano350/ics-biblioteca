@@ -2,5 +2,32 @@
   "name": "@ics-biblioteca/backend",
   "version": "0.1.0",
   "private": true,
-  "description": "API y reglas de negocio de la Biblioteca Digital Universitaria"
+  "type": "module",
+  "scripts": {
+    "dev": "npm run db:generate && tsx watch src/server.ts",
+    "build": "npm run db:generate && tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "tsx --test test/*.test.ts",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "check:services": "tsx scripts/check-services.ts"
+  },
+  "description": "API y reglas de negocio de la Biblioteca Digital Universitaria",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1155.0",
+    "@aws-sdk/s3-request-presigner": "^3.1155.0",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "prisma": "^7.10.1",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2"
+  }
 }
