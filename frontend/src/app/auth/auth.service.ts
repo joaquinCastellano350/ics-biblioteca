@@ -9,6 +9,7 @@ export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
   private generation = 0;
+  private expiryGeneration = 0;
   private restoring = false;
   private expiryTimer: ReturnType<typeof setTimeout> | undefined;
   readonly session = signal<AuthResponse | null>(null);
@@ -26,6 +27,7 @@ export class AuthService {
     if (this.restoring) return;
     this.restoring = true;
     const generation = ++this.generation;
+    const expiryGeneration = this.expiryGeneration;
     const revalidating = this.status() === 'authenticated' && this.session() !== null;
     // La primera carga espera confirmación; una revalidación conserva la cuenta visible.
     if (!revalidating) {
@@ -36,9 +38,11 @@ export class AuthService {
       takeUntilDestroyed(this.destroyRef),
       finalize(() => { this.restoring = false; }),
     ).subscribe({
-      next: (response) => { if (generation === this.generation) this.accept(response); },
+      next: (response) => {
+        if (generation === this.generation && expiryGeneration === this.expiryGeneration) this.accept(response);
+      },
       error: (error: HttpErrorResponse) => {
-        if (generation !== this.generation) return;
+        if (generation !== this.generation || expiryGeneration !== this.expiryGeneration) return;
         // Un fallo temporal no equivale a una sesión inválida ni cambia su vencimiento.
         if (revalidating && (error.status === 0 || error.status >= 500)) return;
         clearTimeout(this.expiryTimer);
@@ -84,7 +88,8 @@ export class AuthService {
     this.session.set(response);
     this.status.set('authenticated');
     this.expiryTimer = setTimeout(() => {
-      this.generation += 1;
+      // Invalida consultas de la sesión vencida sin descartar un login nuevo en curso.
+      this.expiryGeneration += 1;
       this.session.set(null);
       this.status.set('anonymous');
     }, remaining);

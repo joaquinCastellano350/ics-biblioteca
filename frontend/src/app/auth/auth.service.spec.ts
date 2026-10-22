@@ -43,6 +43,42 @@ describe('estado compartido de autenticación', () => {
     expect(auth.loginRequested()).toBe(false);
   });
 
+  it('acepta el login pendiente aunque venza la sesión anterior', () => {
+    vi.useFakeTimers();
+    auth.restore();
+    http.expectOne('/api/auth/session').flush({ ...response, serverTime: '2026-10-22T17:59:59Z' });
+    auth.openLogin();
+    auth.login('a@example.com', 'clave').subscribe();
+    const login = http.expectOne('/api/auth/login');
+
+    vi.advanceTimersByTime(1000);
+    expect(auth.session()).toBeNull();
+    expect(auth.status()).toBe('anonymous');
+    login.flush(response);
+
+    expect(auth.session()).toEqual(response);
+    expect(auth.status()).toBe('authenticated');
+    expect(auth.loginRequested()).toBe(false);
+    vi.advanceTimersByTime(6 * 60 * 60 * 1000);
+    expect(auth.session()).toBeNull();
+    expect(auth.status()).toBe('anonymous');
+  });
+
+  it('una revalidación pendiente no restaura una sesión que ya venció', () => {
+    vi.useFakeTimers();
+    auth.restore();
+    const expiring = { ...response, serverTime: '2026-10-22T17:59:59Z' };
+    http.expectOne('/api/auth/session').flush(expiring);
+    window.dispatchEvent(new Event('focus'));
+    const pending = http.expectOne('/api/auth/session');
+
+    vi.advanceTimersByTime(1000);
+    pending.flush(expiring);
+
+    expect(auth.session()).toBeNull();
+    expect(auth.status()).toBe('anonymous');
+  });
+
   it('un fallo de infraestructura permite reintentar sin abrir otro diálogo', () => {
     auth.restore();
     http.expectOne('/api/auth/session').flush({}, { status: 503, statusText: 'Unavailable' });
