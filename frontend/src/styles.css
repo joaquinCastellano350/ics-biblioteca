@@ -1,1 +1,26 @@
-/* You can add global styles to this file, and also import other style files */
+@import '@fontsource-variable/dm-sans';
+@import '@fontsource-variable/manrope';
+@import 'primeicons/primeicons.css';
+
+:root {
+  --bdu-ink: #193e46;
+  --bdu-text: #243c42;
+  --bdu-muted: #4d615c;
+  --bdu-cream: #f8f7f2;
+  --bdu-line: #dfe4dc;
+  --bdu-lime: #d8ed99;
+  --bdu-sans: 'DM Sans Variable', system-ui, sans-serif;
+  --bdu-display: 'Manrope Variable', system-ui, sans-serif;
+  font-family: var(--bdu-sans);
+  color: var(--bdu-text);
+  background: var(--bdu-cream);
+  font-synthesis: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-size: 15px; line-height: 1.55; }
+button, input { font: inherit; }
+h1, h2, h3 { font-family: var(--bdu-display); color: var(--bdu-ink); letter-spacing: -.035em; }
+a { color: var(--bdu-ink); }
+:focus-visible { outline: 2px solid #8ba56b; outline-offset: 3px; }
+.p-button { font-size: 14px; }
+.p-dialog-mask { backdrop-filter: blur(3px); }
