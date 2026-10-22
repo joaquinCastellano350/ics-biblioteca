@@ -20,7 +20,7 @@ ICS-Biblioteca/
 └── package-lock.json  # Resolución de dependencias de todo el repositorio
 ```
 
-Cada aplicación mantiene sus dependencias en su propio `package.json`. La instalación se administra desde la raíz, con un único `package-lock.json`. Las aplicaciones pueden compilarse y desplegarse por separado.
+Cada aplicación mantiene sus dependencias en su propio `package.json`. La instalación se administra desde la raíz, con un único `package-lock.json`. Las aplicaciones mantienen sus compilaciones separadas; según el ADR-0002 aceptado, en producción se publicarán juntas en un único Render Web Service.
 
 ## Preparación
 
@@ -86,6 +86,9 @@ Las reglas de cupos, préstamos, reservas y vencimientos pertenecen al backend. 
 ## Documentación
 
 - [Vocabulario del dominio](CONTEXT.md).
-- [Propuesta de modelo de datos](docs/modelo-de-datos.md).
+- [Modelo de datos compartido en Confluence](https://joaquincastellano350.atlassian.net/wiki/spaces/SCRUM/pages/6389762) y [copia local sincronizada](docs/modelo-de-datos.md).
 - [Diagrama del modelo](docs/modelo-de-datos.mmd).
+- [Contrato de autenticación y sesión](docs/contrato-autenticacion.md).
+- [Desarrollo y verificación de SCRUM-8](docs/desarrollo-scrum-8.md).
+- [ADR-0002: origen web común aceptado](docs/adr/0002-sesion-y-origen-web.md).
 - [Registro de verificación de la puesta en marcha](docs/verificacion-inicial.md).
