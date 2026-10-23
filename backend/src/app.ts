@@ -1,4 +1,8 @@
 import express from 'express';
+import { join } from 'node:path';
+import type { BookRepositoryInterface } from './book/book-repository-interface.js';
+import { BookController } from './book/book-controller.js';
+import { bookRoutes } from './book/book-routes.js';
 import { createRegistrationRouter } from './modules/accounts/registration.controller.js';
 import type { RegistrationHandlerService } from './modules/accounts/registration.controller.js';
 import type { University } from './modules/accounts/universities.repository.js';
@@ -9,11 +13,17 @@ interface AppServices {
   listUniversities: () => Promise<University[]>;
   registrationService: RegistrationHandlerService;
   production?: boolean;
+  books?: BookRepositoryInterface;
+  frontendDirectory?: string;
 }
 
 export function createApp(services: AppServices) {
   const app = express();
   app.disable('x-powered-by');
+
+  if (services.books) {
+    app.use('/api/books', bookRoutes(new BookController(services.books)));
+  }
 
   app.get('/api/health', (_request, response) => {
     response.json({ status: 'ok' });
@@ -48,9 +58,21 @@ export function createApp(services: AppServices) {
 
   app.use('/api/auth/register', createRegistrationRouter(services.registrationService, services.production));
 
-  app.use((_request, response) => {
+  // Todas las rutas API deben quedar antes de su 404 y del fallback de Angular.
+  app.use('/api', (_request, response) => {
     response.status(404).json({ error: 'NOT_FOUND' });
   });
 
+  if (services.frontendDirectory) {
+    const directory = services.frontendDirectory;
+    app.use(express.static(directory));
+    app.get('/{*path}', (_request, response) => {
+      response.sendFile(join(directory, 'index.html'));
+    });
+  }
+
+  app.use((_request, response) => {
+    response.status(404).json({ error: 'NOT_FOUND' });
+  });
   return app;
 }

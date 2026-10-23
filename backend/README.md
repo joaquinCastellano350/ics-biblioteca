@@ -47,8 +47,41 @@ Object Storage usa el SDK S3 con direccionamiento por ruta, requerido por Neon. 
 
 ## Modelo de datos
 
-El esquema Prisma declara el proveedor PostgreSQL y el generador, sin tablas de dominio. Prisma 7.10 permite generar ese cliente mediante `prisma generate` y usar consultas de conectividad sin adelantar el diseño de cuentas, sesiones o circulación. No se ejecutaron migraciones ni `db push` en esta puesta en marcha.
+El esquema Prisma integra los modelos de universidades, usuarios y sesiones del
+equipo con las cinco tablas del catálogo: libros, autores, materias y sus dos
+relaciones. La migración de SCRUM-13 define sus PK, FK e índices, además del
+CHECK de cupos totales no negativos. No contiene carga inicial ni crea entidades
+de circulación. Las migraciones no se aplican al iniciar Express.
+
+El 22/10/2026 se aplicó la migración del catálogo a la rama `production` de Neon,
+conservando la migración de cuentas que ya estaba aplicada. Ver el
+[registro de aplicación y verificación](../docs/migracion-catalogo-neon.md).
 
 Las migraciones posteriores se versionarán en `prisma/migrations/`, siguiendo [la propuesta de datos](../docs/modelo-de-datos.md). Usarán la conexión directa y deberán revisarse antes de aplicarse a la rama correspondiente.
 
+Desde la raíz, `npm exec --workspace backend -- prisma migrate status` consulta
+el estado y `npm exec --workspace backend -- prisma migrate deploy` aplica las
+migraciones pendientes al destino de `DATABASE_URL_UNPOOLED`. Este último cambia
+la base configurada; comprobar la rama de Neon antes de ejecutarlo. Mantener el
+historial completo de las migraciones del equipo en cada checkout.
+
 Administrar nuevas dependencias desde la raíz siguiendo el [README del repositorio](../README.md).
+
+## Módulo de libros
+
+`src/book/book.ts` define la entidad completa y su proyección pública;
+`book-repository-interface.ts` define el contrato; `book-repository.ts` usa el
+cliente Prisma compartido; `book-controller.ts` prepara la respuesta pública y
+`book-routes.ts` expone `GET /api/books`. Esta lectura no recibe escrituras ni
+criterios de búsqueda que validar. Los requisitos de carga y circulación se
+implementarán en sus operaciones correspondientes.
+
+Las pruebas conservan las comprobaciones de readiness del scaffolding y agregan
+el endpoint y el recorrido Prisma/adaptador pg/PostgreSQL embebido. Las tablas y
+los datos de esas pruebas viven exclusivamente en memoria. No validan el acceso
+a la instancia real de Neon ni escriben en ella.
+
+Después de compilar Angular, `server.ts` detecta `frontend/dist/biblioteca/browser`
+y Express lo sirve en el mismo origen que `/api`. Las rutas públicas de Angular
+se resuelven con `index.html`; una ruta API inexistente sigue devolviendo JSON
+404 y no recibe el HTML de la aplicación.

@@ -1,10 +1,9 @@
-import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { Client } from 'pg';
 import type { QueryResultRow } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-const reference = 'ff2b0310b3d991ff5f6e696b942d711ba1e3562f:backend/prisma/migrations/20261022170000_accounts_and_sessions/migration.sql';
+const accountsMigration = new URL('../../prisma/migrations/20261022170000_accounts_and_sessions/migration.sql', import.meta.url);
 export const testUniversity = {
   id: '00000000-0000-4000-8000-000000000007',
   name: 'Facultad de prueba HU-02 (entorno aislado)',
@@ -67,12 +66,9 @@ export async function openPostgresFixture() {
   }
 
   try {
-    // SQL ORIGINAL leído en memoria del objeto Git fijado. No copia archivos de HU-03,
-    // no reconstruye historial ni invoca migraciones/seeds de Prisma.
-    const schema = execFileSync('git', ['show', reference], {
-      cwd: fileURLToPath(new URL('../../../', import.meta.url)),
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    // SQL original ya versionado en develop. Solo se ejecuta si se autoriza esta
+    // suite aislada; no depende de objetos históricos Git ni invoca Prisma CLI.
+    const schema = await readFile(accountsMigration, 'utf8');
     await observer.query('BEGIN');
     await observer.query(schema);
     await observer.query('INSERT INTO public.universities (id, name) VALUES ($1::uuid, $2)',

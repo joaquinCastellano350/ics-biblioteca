@@ -9,5 +9,90 @@ datasource db {
   provider = "postgresql"
 }
 
-// La puesta en marcha comprueba la conexión sin crear tablas de dominio.
-// Las migraciones se definirán al implementar las historias correspondientes.
+// Modelos del equipo, incorporados de HU-3-Inicio-Sesion (ff2b031).
+model University {
+  id    String @id @default(uuid()) @db.Uuid
+  name  String
+  users User[]
+
+  @@map("universities")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  firstName    String     @map("first_name")
+  lastName     String     @map("last_name")
+  universityId String     @map("university_id") @db.Uuid
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  university   University @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  sessions     Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Book {
+  id           String        @id @default(uuid()) @db.Uuid
+  title        String        @db.Text
+  titleSearch  String        @map("title_search") @db.Text
+  pdfObjectKey String        @map("pdf_object_key") @db.Text
+  totalCopies  Int           @map("total_copies")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  authors      BookAuthor[]
+  subjects     BookSubject[]
+
+  @@map("books")
+}
+
+model Author {
+  id    String       @id @default(uuid()) @db.Uuid
+  name  String       @db.Text
+  books BookAuthor[]
+
+  @@map("authors")
+}
+
+model Subject {
+  id    String        @id @default(uuid()) @db.Uuid
+  name  String        @db.Text
+  books BookSubject[]
+
+  @@map("subjects")
+}
+
+model BookAuthor {
+  bookId   String @map("book_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  book     Book   @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@id([bookId, authorId])
+  @@index([authorId, bookId])
+  @@map("book_authors")
+}
+
+model BookSubject {
+  bookId    String  @map("book_id") @db.Uuid
+  subjectId String  @map("subject_id") @db.Uuid
+  book      Book    @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@id([bookId, subjectId])
+  @@index([subjectId, bookId])
+  @@map("book_subjects")
+}

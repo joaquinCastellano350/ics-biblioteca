@@ -1,0 +1,92 @@
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import type { AddressInfo } from 'node:net';
+import { test } from 'node:test';
+import { createApp } from '../src/app.js';
+import type { BookRepositoryInterface } from '../src/book/book-repository-interface.js';
+
+async function withCatalog(books: BookRepositoryInterface, check: (url: string) => Promise<void>) {
+  const app = createApp({
+    checkDatabase: async () => {},
+    checkStorage: async () => {},
+    listUniversities: async () => [],
+    registrationService: { register: async () => { throw new Error('El catálogo no debe registrar usuarios.'); } },
+    books,
+  });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    await check(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+test('el catálogo público conserva todos los libros y metadatos y oculta datos internos', async () => {
+  const books = [
+    {
+      id: '1',
+      title: 'Redes',
+      authors: [
+        { id: 'a1', name: 'Ana' },
+        { id: 'a2', name: 'Ana' },
+      ],
+      subjects: [
+        { id: 's1', name: 'Redes' },
+        { id: 's2', name: 'Sistemas' },
+      ],
+      pdfObjectKey: 'private.pdf',
+    },
+    {
+      id: '2',
+      title: 'Algoritmos',
+      authors: [{ id: 'a3', name: 'Autora' }],
+      subjects: [{ id: 's3', name: 'Algoritmos' }],
+    },
+  ];
+  await withCatalog({ findAll: async () => books }, async (url) => {
+    const response = await fetch(`${url}/api/books`);
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.books.length, 2);
+    assert.equal(result.books[0].authors.length, 2);
+    assert.equal(result.books[0].subjects.length, 2);
+    assert.ok(!JSON.stringify(result).includes('private.pdf'));
+    assert.deepEqual(Object.keys(result.books[0]), ['id', 'title', 'authors', 'subjects']);
+  });
+});
+
+test('un catálogo vacío es una colección válida, no un fallo', async () => {
+  await withCatalog({ findAll: async () => [] }, async (url) => {
+    const response = await fetch(`${url}/api/books`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { books: [] });
+  });
+});
+
+test('un error del repositorio devuelve 503 sin revelar detalles de Prisma o Neon', async () => {
+  await withCatalog(
+    {
+      findAll: async () => {
+        throw new Error('credencial-secreta');
+      },
+    },
+    async (url) => {
+      const response = await fetch(`${url}/api/books`);
+      assert.equal(response.status, 503);
+      const body = await response.text();
+      assert.equal(JSON.parse(body).error.code, 'CATALOG_UNAVAILABLE');
+      assert.ok(!body.includes('credencial-secreta'));
+    },
+  );
+});
+
+test('SCRUM-13 no expone escrituras ni una ficha de detalle', async () => {
+  await withCatalog({ findAll: async () => [] }, async (url) => {
+    const response = await fetch(`${url}/api/books`, { method: 'POST' });
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.get('allow'), 'GET');
+    assert.equal((await fetch(`${url}/api/books/1`)).status, 404);
+  });
+});

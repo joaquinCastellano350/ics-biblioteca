@@ -6,7 +6,7 @@ Fecha de preparación inicial: 2026-10-22. Última revisión: 2026-10-23 (hora l
 
 Este documento acompaña el futuro Pull Request de HU-02. Distingue implementación local, verificaciones históricas y propuestas pendientes.
 
-**HU-02 se implementó sin merge ni incorporación de archivos de HU-03.** La estrategia anterior de incorporar primero el PR del compañero quedó sustituida por una implementación propia de registro sobre la rama actual, conservando contratos compatibles para una integración futura.
+**HU-02 se implementó originalmente sin merge con HU-03. Actualmente está en curso un merge LOCAL y sin commit de origin/develop en feature/hu-02-registro.** Se conserva el registro propio y se incorpora el catálogo SCRUM-13. No se integró la rama HU-03 ni se implementó login; los modelos de cuentas compartidos llegan porque ya están versionados en develop.
 
 **El registro está implementado y sus siete casos de integración real fueron aprobados en PostgreSQL 17.11 aislado, sin acceder a Neon.** El formulario dejó de ser una vista previa y puede enviar solicitudes reales. La persistencia, rollback y concurrencia se verificaron en un contenedor temporal; este y sus datos tmpfs fueron eliminados después de las pruebas. Esto no equivale a probar ni autorizar escrituras sobre la base compartida.
 
@@ -18,17 +18,18 @@ Este documento acompaña el futuro Pull Request de HU-02. Distingue implementaci
 | Commit inicial HU-02 | `195f5f52a82059550e362db55565c72f5a2571ec` |
 | Mensaje inicial | `feat(hu-02): agregar formulario y carga de facultades` |
 | Alcance del commit inicial | 19 archivos: 12 nuevos y 7 modificados |
-| Último commit confirmado | `3a6fab578f53ffa261ff62f8364385da1929a1c8` |
-| Mensaje del último commit | `docs: documentar integración HU-02 y HU-03` |
+| Último commit confirmado (HEAD durante este merge) | `66a205d219436965d1504019f044d123d4ef5fd4` |
+| Mensaje del último commit | `style(hu-02): adaptar registro al diseño de Biblioteca Digital` |
 | Base anterior | `260f2edc74e8652a6f7845aca797ece177225f0a` |
 | PR de HU-03 analizado anteriormente | [PR #1](https://github.com/joaquinCastellano350/ics-biblioteca/pull/1) |
 | Commit fijado del PR | `ff2b0310b3d991ff5f6e696b942d711ba1e3562f` |
-| HU-03 incorporada | No |
-| Registro posterior al commit documental | Implementado en el directorio de trabajo; sin confirmar |
+| Rama HU-03 incorporada | No; develop ya aporta los modelos/migraciones compartidos |
+| Registro posterior al commit documental | Confirmado en `4d4cdca`; rediseño confirmado en `66a205d` |
 | Estado antes de la etapa 7 | 8 archivos modificados y 13 sin seguimiento |
-| Estado al actualizar este documento | 9 archivos modificados y 15 sin seguimiento; nada preparado en staging |
+| Estado al actualizar este documento | Merge sin commit: cambios de develop y seis conflictos conciliados; revisión pendiente del usuario |
+| Base de integración | `origin/develop` en `fbc7d8b3b87c62fca924ecedf7d20a0de9094a9a` |
 
-No se actualizaron referencias remotas ni se verificó el estado actual del PR en GitHub durante esta revisión. Su commit se consultó únicamente mediante objetos Git locales.
+Se ejecutó git fetch origin con autorización antes de esta integración; origin/develop quedó en fbc7d8b. No se consultó el estado actual del PR de HU-03 ni se incorporó su rama. HEAD no avanza hasta que el usuario autorice confirmar el merge.
 
 ## 2. Requisitos y cobertura funcional
 
@@ -44,7 +45,7 @@ Descripción: «Como visitante, quiero crear una cuenta, para acceder a las func
 | Elegir facultad de la lista cerrada documentada | GET público, UUID real, validación de pertenencia en Angular y existencia dentro de la transacción; las 30 facultades se verificaron históricamente por lectura |
 | Aceptar correo válido de cualquier dominio, sin acreditar estudiante ni confirmar correo | Sin restricción institucional ni confirmación; correo normalizado en backend |
 | Señalar datos faltantes o inválidos y rechazar correo registrado | Validaciones locales y backend, errores por campo, HTTP 400/409; duplicado y concurrencia verificados en PostgreSQL aislado |
-| Iniciar sesión y mostrar la landing al completar el registro | Creación transaccional y cookie verificadas con PostgreSQL real aislado; navegación a `/` comprobada con HTTP simulado. La bienvenida de Angular es el destino temporal autorizado, no la landing definitiva |
+| Iniciar sesión y mostrar la landing al completar el registro | Creación transaccional y cookie verificadas con PostgreSQL real aislado; navegación a `/` comprobada con HTTP simulado. Tras compatibilizar con develop, `/` redirige a `/catalogo`; se conserva ese comportamiento como destino posterior al registro, sin implementar otra landing |
 | No aplicar complejidad de contraseña | Se acepta contraseña no vacía, sin confirmación ni composición obligatoria; límite técnico autorizado de 1024 bytes UTF-8 en backend |
 
 RF-01 corresponde al registro. RF-02 describe el acceso a la cuenta para funciones personales: aquí solo se prepara la sesión automática posterior al registro, sin implementar el inicio de sesión manual.
@@ -201,9 +202,9 @@ Los errores no emiten cookie. Las validaciones del backend se reutilizan, no se 
 
 ## 6. Prisma, esquema existente y relación con HU-03
 
-El schema.prisma local sigue sin modelos de dominio. El repositorio no presupone modelos generados de usuario o sesión: recibe el cliente Prisma existente y usa plantillas etiquetadas seguras de $queryRaw dentro de $transaction.
+Antes del merge, schema.prisma no contenía modelos de dominio. Ahora se conserva íntegramente el esquema de develop, con University, User, Session y los modelos de catálogo. El repositorio de registro mantiene SQL parametrizado mediante el mismo cliente Prisma que utiliza BookRepository; no se duplican modelos, pools ni migraciones.
 
-La migración original del commit fijado de HU-03 se leyó desde el objeto Git local, sin incorporarla:
+La validación aislada histórica leyó el SQL del objeto Git fijado de HU-03. Ahora develop ya aporta el mismo archivo versionado y la fixture lo lee directamente, sin depender de objetos Git históricos:
 
 `backend/prisma/migrations/20261022170000_accounts_and_sessions/migration.sql`
 
@@ -215,15 +216,15 @@ La documentación interna `docs/modelo-de-datos.md` todavía menciona faculty_id
 
 ### Qué permanece únicamente en HU-03
 
-Según el análisis histórico del commit fijado, permanecen en el PR AccountsService, PrismaAccountsRepository, sus modelos/migraciones/seed originales, login manual, consulta/restauración de sesión, AuthService y diálogo Angular, además de otra implementación de facultades. No se importaron en esta rama. Compartir algoritmos y contratos no significa haber incorporado sus archivos.
+AccountsService, PrismaAccountsRepository, login manual, consulta/restauración de sesión, AuthService y diálogo Angular del PR no se incorporaron en esta integración. Los modelos University/User/Session y la migración original ya forman parte de develop y se preservaron junto al catálogo. Se mantiene una sola ruta de facultades local; no se copió la implementación del PR ni su seed.
 
-### Integración futura: propuesta, sin ejecutar
+### Coordinación futura con HU-03 (distinta del merge local de develop)
 
 1. Acordar el commit base, responsabilidades de cuentas, contrato de cookie y destino definitivo. Ningún integrante tiene mantenimiento exclusivo asignado por este documento.
 2. Comparar funciones de seguridad y errores antes de consolidar RegistrationService con AccountsService. Conservar una sola operación transaccional, sin crear sesión mediante otra escritura posterior.
-3. Si se autoriza incorporar Prisma original, preservar sus archivos e historial; no reconstruir migraciones ni ejecutar migraciones/seed sobre la base compartida.
+3. Conservar los modelos y migraciones originales ya recibidos de develop; no reconstruir historial ni ejecutar migraciones/seed sobre la base compartida.
 4. Consolidar una sola ruta GET /api/universities y conservar la envoltura pública, UUID y casos vacío/503. Hoy sigue vigente el repositorio local; no está autorizada su eliminación.
-5. Combinar manualmente backend/src/app.ts y server.ts, y eventualmente App Angular, sin perder /registro, bienvenida y pruebas. El PR revisado proponía eliminar app.spec.ts: se debe preservar su cobertura.
+5. Cualquier integración posterior de login debe conservar la composición Express conciliada, /catalogo, /registro y sus pruebas. No restaurar la antigua bienvenida de Angular ni eliminar la cobertura de App.
 6. Si se adopta el estado Angular compartido, reutilizar una única lógica de autenticación; no efectuar un login adicional tras el registro.
 7. Verificar con simulaciones y una base aislada antes de una integración real autorizada. No hay merge, rama base nueva ni publicación autorizados por este documento.
 
@@ -247,11 +248,11 @@ Observaciones históricas, resolución aplicada y límites vigentes:
 2. **Persistencia real verificada en entorno aislado:** hubo HTTP 201, un usuario y una sesión vinculados, Argon2id verificable y solo SHA-256 del token almacenado. Se comprobó 409 real por duplicado. Los permisos, conectividad y diferencias operativas del usuario de Neon no se verificaron y no quedan autorizados por estos resultados.
 3. **Atomicidad y concurrencia verificadas en base aislada:** un trigger de prueba provocó un fallo real en la creación de sesión después de insertarse el usuario; otra conexión comprobó ausencia de ambas filas. Dos registros simultáneos con el mismo correo normalizado produjeron un 201 y un 409, una cuenta y una sesión. La comprobación del trigger utilizó una secuencia para demostrar que se alcanzó esa inserción; los objetos de fallo se retiraron durante el caso.
 4. **Sesión automática no verificada en navegador real:** falta comprobar cookie recibida/almacenada y vínculo con la sesión persistida en un entorno aislado. No hay endpoint local para recuperar sesión ni una vista global autenticada; eso fue excluido expresamente.
-5. **Landing pendiente:** / muestra la bienvenida actual por decisión temporal autorizada. No equivale a haber incorporado el diseño final.
+5. **Destino posterior conciliado:** / redirige a /catalogo, preservando el inicio de develop. RegisterPage sigue navegando a / después del éxito; no requirió cambios. Esto no incorpora una landing adicional ni estado global de autenticación.
 6. **Respuesta perdida o cancelación:** destruir la página cancela la suscripción, pero no garantiza deshacer una transacción ya confirmada en el servidor. Un reintento podría devolver 409; no se implementó idempotencia.
 7. **Navegación fallida:** RegisterPage inicia Router.navigate y marca registered; no gestiona explícitamente un rechazo o cancelación de esa navegación. La ruta actual se comprobó con pruebas; el escenario de fallo de navegación no está cubierto.
 8. **Riesgos de integración:** no sustituir funciones por nombres similares sin comparar parámetros, respuestas, clasificación de errores y comportamiento transaccional. La coincidencia histórica de la base no habilita modificarla.
-9. **Advertencias y limpieza pendiente:** presupuesto inicial Angular superado; aviso PrimeUI observado en una ejecución anterior; reglas CSS de vista previa sin uso y comentarios históricos del esquema/servicio. No se modificaron otros archivos para corregirlos.
+9. **Advertencias históricas y actuales:** el rediseño retiró las reglas CSS de vista previa. El presupuesto inicial anteriormente superado quedó en 493,06 kB tras la conciliación, sin advertencia de presupuesto en esta compilación. El aviso PrimeUI pertenece a una ejecución anterior. Se conservan comentarios históricos que no afectan esta compatibilidad.
 
 Los siete escenarios preparados quedaron validados contra PostgreSQL real aislado. Siguen pendientes la revisión en navegador real y la landing definitiva; no se declara validación sobre Neon ni integración con HU-03.
 
@@ -465,6 +466,38 @@ El registro conserva las etapas iniciales del 2026-10-22 y el cierre actualizado
 - Revisión: git status, git diff --check, git diff --stat y listado de archivos sin seguimiento, sin staging ni commits.
 - Problemas: advertencia Angular y avisos LF/CRLF; no se corrigió código.
 - Pendiente: revisión del usuario y autorización para preparar el commit local.
+
+
+### 2026-10-23 — Merge local controlado de develop, sin commit
+
+- Inicio autorizado: feature/hu-02-registro, HEAD 66a205d219436965d1504019f044d123d4ef5fd4 y árbol limpio.
+- Comando: git merge --no-commit --no-ff origin/develop, fijado en fbc7d8b3b87c62fca924ecedf7d20a0de9094a9a.
+- Conflictos identificados antes de resolver: backend/src/app.ts, backend/src/server.ts, frontend/src/app/app.ts, app.html y app.routes.ts (contenido), y frontend/src/app/app.spec.ts (modificado/eliminado).
+- Resoluciones:
+  - backend/src/app.ts: conserva books/frontendDirectory y agrega las dependencias HU-02; monta catálogo, universidades y registro antes del 404 API y del fallback SPA.
+  - backend/src/server.ts: compone BookRepository y PostgresRegistrationRepository con el mismo cliente compartido y mantiene el servicio estático.
+  - frontend/src/app/app.routes.ts: conserva /catalogo y redirecciones; añade /registro antes del comodín.
+  - frontend/src/app/app.ts y app.html: mantiene raíz simple con RouterOutlet y navegación pública Catálogo/Crear cuenta, sin la bienvenida de scaffolding ni lógica de login.
+  - frontend/src/app/app.spec.ts: conserva la suite, adapta el destino /catalogo, simula GET de libros y facultades, y comprueba navegación, POST simulado, éxito y comodín. No se eliminan casos para ocultar regresiones.
+- Archivos adicionales conciliados:
+  - backend/test/book.test.ts: inyecta facultades vacías y registro simulado, sin operaciones de base.
+  - backend/test/static.test.ts: inyecta dependencias HU-02; comprueba HTML en /registro, facultades y error de validación de POST simulado, además de catálogo y 404 API.
+  - backend/test/integration/postgres-fixture.ts: cambia git show por readFile de la migración versionada ya presente en develop. No se ejecuta la fixture.
+  - docs/integracion-hu02-hu03.md: actualiza estado y decisiones y conserva resultados históricos.
+- Preservado sin modificación manual: schema.prisma, migraciones, configuración, módulos y contrato público del catálogo, estilos globales y lockfile provenientes de develop.
+- Preservado desde HU-02: formulario, sus cuatro archivos del rediseño, servicio HTTP, validaciones, hashing, cookie y lógica de registro. No se integró la rama de login HU-03.
+- Verificaciones ejecutadas:
+  - Backend: selección explícita de nueve archivos test, 84 pruebas aprobadas y 0 fallidas; HTTP local, criptografía y repositorios simulados.
+  - Frontend: npm.cmd test, 59 pruebas aprobadas y 0 fallidas en seis archivos, con HTTP interceptado.
+  - Backend: npm.cmd run build, cliente Prisma generado localmente y compilación exitosa; sin migraciones ni SQL.
+  - Frontend: npm.cmd run build -- --configuration production, exitosa; paquete inicial 493,06 kB, por debajo de 500 kB.
+  - git diff --check y revisión de conflictos y estado del índice.
+- No ejecutado por la restricción de SQL: backend/test/book-repository.test.ts, cuyo helper PGlite aplica migraciones/SQL en memoria. Tampoco integración PostgreSQL, E2E, Prisma db push ni comandos SQL.
+- El script npm.cmd test de backend incluye ese caso PGlite, por eso no se utilizó para esta verificación; se seleccionaron explícitamente los archivos seguros. Las dependencias declaradas de develop no se instalaron ni actualizaron.
+- Problemas: accesos del sandbox al iniciar tsx o compilar Angular; reintentos autorizados fuera de él. Sin errores de pruebas ni compilación en las ejecuciones finales.
+- Estado: integración local sin commit ni push; los resultados históricos de siete casos PostgreSQL son anteriores a este merge y no verifican la fixture recién ajustada.
+- Pendiente antes de confirmar/publicar: revisión del usuario del diff y del destino /catalogo, decidir autorización para pruebas PGlite/integración aislada y, si se necesitan E2E, resolver la dependencia Playwright no instalada. No se requiere instalarla para las suites unitarias ni compilaciones ejecutadas.
+- HU-04 y HU-06 siguen fuera del alcance; no hubo conexión a Neon ni cambios de .env.
 
 ### Plantilla para próximas etapas
 

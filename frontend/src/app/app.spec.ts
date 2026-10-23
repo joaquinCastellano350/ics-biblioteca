@@ -34,6 +34,10 @@ describe('App', () => {
 
   async function settleNavigation(): Promise<void> {
     fixture.detectChanges();
+    for (const request of http.match('/api/books')) {
+      expect(request.request.method).toBe('GET');
+      request.flush({ books: [] });
+    }
     for (const request of http.match('/api/universities')) {
       expect(request.request.method).toBe('GET');
       request.flush({ universities: [
@@ -54,10 +58,11 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render title', async () => {
+  it('redirige el inicio al catálogo público y muestra su título', async () => {
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, biblioteca');
+    expect(router.url).toBe('/catalogo');
+    expect(compiled.querySelector('h1')?.textContent).toContain('Catálogo de libros');
   });
 
   it('ofrece un enlace al registro desde el inicio', () => {
@@ -120,27 +125,46 @@ describe('App', () => {
     }, { status: 201, statusText: 'Created' });
     await navigation;
     await settleNavigation();
-    expect(router.url).toBe('/');
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Hello, biblioteca');
+    expect(router.url).toBe('/catalogo');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Catálogo de libros');
     expect(fixture.nativeElement.querySelector('app-register')).toBeNull();
   });
 
-  it('restaura la bienvenida al usar Volver al inicio', async () => {
+  it('vuelve al catálogo al usar Volver al inicio desde registro', async () => {
     await navigate('/registro');
     const navigation = firstValueFrom(router.events.pipe(filter((event) => event instanceof NavigationEnd)));
     fixture.nativeElement.querySelector('app-register-page nav a').click();
     await navigation;
     await settleNavigation();
-    expect(router.url).toBe('/');
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Hello, biblioteca');
+    expect(router.url).toBe('/catalogo');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Catálogo de libros');
     expect(fixture.nativeElement.querySelector('app-register')).toBeNull();
   });
 
-  it('distingue la ruta inicial de registro aunque tengan query o fragmento', async () => {
+  it('conserva registro y el inicio redirigido aunque tengan query o fragmento', async () => {
     await navigate('/registro?origen=inicio#formulario');
     expect(fixture.nativeElement.textContent).not.toContain('Hello, biblioteca');
     await navigate('/?origen=registro#inicio');
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Hello, biblioteca');
+    expect(router.url).toContain('/catalogo');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Catálogo de libros');
     expect(fixture.nativeElement.querySelector('app-register')).toBeNull();
+  });
+
+  it('mantiene un enlace explícito al catálogo desde registro', async () => {
+    await navigate('/registro');
+    const navigation = firstValueFrom(router.events.pipe(filter((event) => event instanceof NavigationEnd)));
+    fixture.nativeElement.querySelector('nav[aria-label="Navegación principal"] a[href="/catalogo"]').click();
+    await navigation;
+    await settleNavigation();
+    expect(router.url).toBe('/catalogo');
+    expect(fixture.nativeElement.querySelector('app-catalog-page')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('app-register')).toBeNull();
+  });
+
+  it('mantiene el comodín después de las rutas públicas y redirige una ruta desconocida', async () => {
+    await navigate('/ruta-inexistente');
+    expect(router.url).toBe('/catalogo');
+    expect(fixture.nativeElement.querySelector('app-catalog-page')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Catálogo de libros');
   });
 });
