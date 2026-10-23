@@ -3,21 +3,46 @@
     <a routerLink="/">← Volver al inicio</a>
   </nav>
 
-  <app-register
-    [universities]="universities()"
-    [universitiesLoading]="universitiesLoading()"
-    [universitiesError]="universitiesError()"
-    [loading]="submitting()"
-    [submitDisabled]="registered()"
-    [errorMessage]="registrationError()"
-    [fieldErrors]="registrationFieldErrors()"
-    (registerRequested)="register($event)" />
+  <section class="register-layout" aria-label="Registro de cuenta">
+    <aside class="register-aside" aria-labelledby="register-aside-title">
+      <div class="eyebrow">Biblioteca digital universitaria</div>
+      <h2 id="register-aside-title">El próximo capítulo<br>empieza <em>con vos.</em></h2>
+      <p>Creá tu cuenta y llevá la bibliografía de tus clases a donde estés.</p>
+      <div class="register-benefits">
+        <div>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v15M3 4c3-1 6-1 9 1 3-2 6-2 9-1v14c-3-1-6-1-9 1-3-2-6-2-9-1Z" /></svg>
+          <span>Elegí tu facultad de la lista</span>
+        </div>
+        <div>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 6 9 7 9-7" /></svg>
+          <span>Usá un correo de cualquier dominio</span>
+        </div>
+        <div>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg>
+          <span>Registrate sin confirmar tu correo</span>
+        </div>
+      </div>
+      <div class="register-aside-bottom">Un espacio para aprender. Una comunidad para crecer.</div>
+    </aside>
 
-  @if (!universitiesLoading() && (universitiesError() || universities().length === 0)) {
-    <div class="retry-actions">
-      <button type="button" class="retry-button" (click)="loadUniversities()">
-        {{ universitiesError() ? 'Reintentar' : 'Volver a consultar facultades' }}
-      </button>
+    <div class="register-form">
+      <app-register
+        [universities]="universities()"
+        [universitiesLoading]="universitiesLoading()"
+        [universitiesError]="universitiesError()"
+        [loading]="submitting()"
+        [submitDisabled]="registered()"
+        [errorMessage]="registrationError()"
+        [fieldErrors]="registrationFieldErrors()"
+        (registerRequested)="register($event)" />
+
+      @if (!universitiesLoading() && (universitiesError() || universities().length === 0)) {
+        <div class="retry-actions">
+          <button type="button" class="retry-button" (click)="loadUniversities()">
+            {{ universitiesError() ? 'Reintentar' : 'Volver a consultar facultades' }}
+          </button>
+        </div>
+      }
     </div>
-  }
+  </section>
 </main>

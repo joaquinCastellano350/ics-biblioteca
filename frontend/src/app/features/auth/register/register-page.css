@@ -1,33 +1,100 @@
 :host {
   display: block;
-  padding: clamp(1rem, 4vw, 2.5rem);
-  font-family: var(--bdu-sans, system-ui, sans-serif);
+  min-height: 100svh;
+  padding-top: 24px;
+  background: var(--bdu-cream, #f8f7f2);
+  font-family: var(--bdu-sans, 'DM Sans', system-ui, sans-serif);
   color: var(--bdu-text, #243c42);
 }
-
-.register-page { width: 100%; max-width: 42rem; margin: 0 auto; }
-nav { margin-bottom: 1.25rem; }
-nav a { display: inline-block; padding: .5rem 0; text-underline-offset: .2em; }
-.preview-notice {
-  margin-bottom: 1.25rem;
-  padding: 1rem 1.25rem;
+.register-page { width: min(1240px, calc(100% - 96px)); margin: 0 auto; }
+nav { max-width: 970px; margin: 0 auto; font-size: 12px; }
+nav a { display: inline-block; padding: 6px 0; text-decoration: none; }
+nav a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.register-layout {
+  display: grid;
+  grid-template-columns: .92fr 1fr;
+  max-width: 970px;
+  margin: 48px auto 65px;
   border: 1px solid var(--bdu-line, #dfe4dc);
-  border-left: .25rem solid var(--bdu-ink, #193e46);
-  border-radius: .5rem;
-  background: #e9eee5;
-  overflow-wrap: anywhere;
+  border-radius: 15px;
+  background: #fff;
+  overflow: hidden;
 }
-.preview-notice h2 { margin: 0 0 .5rem; font-size: 1.125rem; }
-.preview-notice p { margin: 0; }
-.retry-actions { margin-top: 1rem; }
+.register-aside {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 41px;
+  background: var(--bdu-ink, #193e46);
+  color: #d9e3d6;
+}
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 30px;
+  color: #b8cdb2;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .16em;
+}
+.eyebrow::before { content: ''; width: 24px; height: 1px; flex-shrink: 0; background: currentColor; }
+.register-aside h2 {
+  margin: 0;
+  color: #f5f5e9;
+  font-family: var(--bdu-display, 'Manrope', system-ui, sans-serif);
+  font-size: 39px;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -.035em;
+}
+.register-aside h2 em { color: var(--bdu-lime, #d8ed99); font-family: Georgia, serif; font-weight: 400; }
+.register-aside p { max-width: 280px; margin: 22px 0 0; color: #bacfc7; font-size: 13px; line-height: 1.85; }
+.register-benefits { display: grid; gap: 18px; margin-top: 38px; font-size: 12px; }
+.register-benefits > div { display: flex; align-items: center; gap: 10px; }
+.register-benefits svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--bdu-lime, #d8ed99);
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.register-aside-bottom { margin-top: auto; padding-top: 40px; color: #b4c6bb; font-size: 10px; }
+.register-form { min-width: 0; background: #fff; }
+.retry-actions { padding: 0 38px 26px; }
 .retry-button {
-  padding: .75rem 1rem;
+  padding: 10px 14px;
   border: 1px solid var(--bdu-ink, #193e46);
-  border-radius: .5rem;
+  border-radius: 8px;
   background: #fff;
   color: var(--bdu-ink, #193e46);
   font: inherit;
+  font-size: 12px;
   cursor: pointer;
 }
 .retry-button:hover { background: #e9eee5; }
-.retry-button:focus-visible { outline: 2px solid #8ba56b; outline-offset: 3px; }
+nav a:focus-visible, .retry-button:focus-visible { outline: 2px solid #8ba56b; outline-offset: 3px; }
+@media (max-width: 1100px) {
+  .register-page { width: calc(100% - 56px); }
+}
+@media (max-width: 850px) {
+  .register-layout { margin: 30px auto 45px; }
+  .register-aside { padding: 30px; }
+  .register-aside h2 { font-size: 32px; }
+  .retry-actions { padding-inline: 28px; }
+}
+@media (max-width: 600px) {
+  :host { padding-top: 18px; }
+  .register-page { width: calc(100% - 36px); }
+  .register-layout { display: block; max-width: 450px; margin-top: 25px; }
+  .register-aside { padding: 25px; }
+  .register-aside h2 { max-width: 280px; font-size: 31px; }
+  .eyebrow { margin-bottom: 17px; font-size: 9px; }
+  .register-aside p { max-width: 310px; margin-top: 13px; font-size: 11px; }
+  .register-benefits, .register-aside-bottom { display: none; }
+  .retry-actions { padding-inline: 23px; }
+}
