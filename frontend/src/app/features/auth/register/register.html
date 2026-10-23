@@ -7,7 +7,8 @@
   <form [formGroup]="form" (ngSubmit)="submit()" novalidate
     [attr.aria-busy]="loading() || universitiesLoading()">
     @if (errorMessage()) {
-      <p class="error-banner" role="alert">{{ errorMessage() }}</p>
+      <p-message class="error-banner" severity="error" variant="simple" size="small"
+        role="alert" aria-live="polite" aria-atomic="true">{{ errorMessage() }}</p-message>
     }
 
     <fieldset [disabled]="loading() || universitiesLoading()">
@@ -18,10 +19,13 @@
           <label for="register-first-name">Nombre</label>
           <input pInputText id="register-first-name" formControlName="firstName"
             autocomplete="given-name" placeholder="Tu nombre" required
+            [invalid]="!!messageFor('firstName')"
             [attr.aria-invalid]="!!messageFor('firstName')"
             [attr.aria-describedby]="messageFor('firstName') ? 'register-first-name-error' : null" />
           @if (messageFor('firstName'); as message) {
-            <small id="register-first-name-error" class="field-error">{{ message }}</small>
+            <p-message id="register-first-name-error" class="field-error" severity="error"
+              variant="simple" size="small" [attr.role]="'none'"
+              [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
           }
         </div>
 
@@ -29,23 +33,24 @@
           <label for="register-last-name">Apellido</label>
           <input pInputText id="register-last-name" formControlName="lastName"
             autocomplete="family-name" placeholder="Tu apellido" required
+            [invalid]="!!messageFor('lastName')"
             [attr.aria-invalid]="!!messageFor('lastName')"
             [attr.aria-describedby]="messageFor('lastName') ? 'register-last-name-error' : null" />
           @if (messageFor('lastName'); as message) {
-            <small id="register-last-name-error" class="field-error">{{ message }}</small>
+            <p-message id="register-last-name-error" class="field-error" severity="error"
+              variant="simple" size="small" [attr.role]="'none'"
+              [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
           }
         </div>
 
         <div class="field full-width">
-          <label for="register-university">Facultad</label>
-          <select id="register-university" formControlName="universityId" required
-            [attr.aria-invalid]="!!messageFor('universityId')"
-            aria-describedby="register-university-status register-university-error">
-            <option value="" disabled>Seleccioná tu facultad</option>
-            @for (university of universities(); track university.id) {
-              <option [value]="university.id">{{ university.name }}</option>
-            }
-          </select>
+          <label id="register-university-label" for="register-university">Facultad</label>
+          <p-select class="university-select" inputId="register-university"
+            ariaLabelledBy="register-university-label" formControlName="universityId" required
+            [options]="universityOptions()" optionLabel="name" optionValue="id"
+            placeholder="Seleccioná tu facultad" emptyMessage="No hay facultades disponibles."
+            [loading]="universitiesLoading()" [invalid]="!!messageFor('universityId')"
+            [pt]="universityPassThrough()" appendTo="body" />
           <div id="register-university-status" class="hint" role="status">
             @if (universitiesLoading()) {
               <span>Cargando facultades…</span>
@@ -53,11 +58,13 @@
               <span>No hay facultades disponibles. Intentá nuevamente más tarde.</span>
             }
           </div>
-          <div id="register-university-error" class="field-error" aria-live="polite">
+          <div id="register-university-error" class="field-error">
             @if (universitiesError()) {
-              <span>{{ universitiesError() }}</span>
+              <p-message severity="error" variant="simple" size="small" [attr.role]="'none'"
+                [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ universitiesError() }}</p-message>
             } @else if (messageFor('universityId'); as message) {
-              <span>{{ message }}</span>
+              <p-message severity="error" variant="simple" size="small" [attr.role]="'none'"
+                [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
             }
           </div>
         </div>
@@ -66,11 +73,14 @@
           <label for="register-email">Correo electrónico</label>
           <input pInputText id="register-email" type="email" formControlName="email"
             autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="nombre@ejemplo.com" required
+            [invalid]="!!messageFor('email')"
             [attr.aria-invalid]="!!messageFor('email')"
             [attr.aria-describedby]="messageFor('email') ? 'register-email-hint register-email-error' : 'register-email-hint'" />
           <small id="register-email-hint" class="field-hint">Podés usar un correo de cualquier dominio.</small>
           @if (messageFor('email'); as message) {
-            <small id="register-email-error" class="field-error">{{ message }}</small>
+            <p-message id="register-email-error" class="field-error" severity="error"
+              variant="simple" size="small" [attr.role]="'none'"
+              [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
           }
         </div>
 
@@ -78,12 +88,14 @@
           <label for="register-password">Contraseña</label>
           <input pInputText id="register-password" type="password" formControlName="password"
             autocomplete="new-password" placeholder="Elegí tu contraseña" required
+            [invalid]="!!messageFor('password')"
             [attr.aria-invalid]="!!messageFor('password')"
             aria-describedby="register-password-hint register-password-error" />
           <small id="register-password-hint" class="hint">No se exige combinar letras, números o símbolos.</small>
           <div id="register-password-error" class="field-error">
             @if (messageFor('password'); as message) {
-              <span>{{ message }}</span>
+              <p-message severity="error" variant="simple" size="small" [attr.role]="'none'"
+                [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
             }
           </div>
         </div>

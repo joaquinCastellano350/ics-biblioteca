@@ -38,9 +38,10 @@
 
       @if (!universitiesLoading() && (universitiesError() || universities().length === 0)) {
         <div class="retry-actions">
-          <button type="button" class="retry-button" (click)="loadUniversities()">
-            {{ universitiesError() ? 'Reintentar' : 'Volver a consultar facultades' }}
-          </button>
+          <p-button type="button" class="retry-button" variant="outlined"
+            [label]="universitiesError() ? 'Reintentar' : 'Volver a consultar facultades'"
+            [style]="{ fontSize: '12px', fontFamily: 'inherit', lineHeight: 'inherit' }"
+            (onClick)="loadUniversities()" />
         </div>
       }
     </div>

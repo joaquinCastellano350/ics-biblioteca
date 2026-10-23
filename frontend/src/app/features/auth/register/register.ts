@@ -1,7 +1,10 @@
-import { ChangeDetectionStrategy, Component, effect, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, input, output, untracked, viewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, ValidatorFn, Validators } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
+import { MessageModule } from 'primeng/message';
+import { Select, SelectModule } from 'primeng/select';
+import type { SelectPassThrough } from 'primeng/select';
 
 // Se conserva universityId para respetar el contrato HTTP, aunque la interfaz diga facultad.
 export interface RegistrationUniversity {
@@ -28,13 +31,15 @@ const requiredText: ValidatorFn = (control) =>
 @Component({
   selector: 'app-register',
   standalone: true,
-  imports: [ReactiveFormsModule, InputTextModule, ButtonModule],
+  imports: [ReactiveFormsModule, InputTextModule, ButtonModule, SelectModule, MessageModule],
   templateUrl: './register.html',
   styleUrl: './register.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Register {
+  private readonly universitySelect = viewChild(Select);
   readonly universities = input<readonly RegistrationUniversity[]>([]);
+  readonly universityOptions = computed(() => [...this.universities()]);
   readonly universitiesLoading = input(false);
   readonly universitiesError = input<string | null>(null);
   readonly loading = input(false);
@@ -66,8 +71,31 @@ export class Register {
   constructor() {
     effect(() => {
       this.universities();
-      this.form.controls.universityId.updateValueAndValidity({ emitEvent: false });
+      const control = this.form.controls.universityId;
+      const blocked = this.loading() || this.universitiesLoading()
+        || !!this.universitiesError() || this.universities().length === 0;
+      // Reactive Forms transmite el bloqueo al ControlValueAccessor de p-select.
+      if (blocked && control.enabled) control.disable({ emitEvent: false });
+      else if (!blocked && control.disabled) control.enable({ emitEvent: false });
+      control.updateValueAndValidity({ emitEvent: false });
+      const select = this.universitySelect();
+      if (blocked && select) untracked(() => select.hide());
     });
+  }
+
+  protected universityPassThrough(): SelectPassThrough {
+    return {
+      root: { style: { width: '100%', minWidth: '0', minHeight: '43px', fontSize: '12px' } },
+      label: {
+        'aria-describedby': 'register-university-status register-university-error',
+        'aria-invalid': String(!!this.messageFor('universityId')),
+        style: { padding: '11px 13px', lineHeight: '19px' },
+      },
+      dropdown: { style: { width: '32px', flexShrink: '0' } },
+      // El overlay se monta en body para escapar del overflow del layout.
+      overlay: { style: { fontFamily: 'var(--bdu-sans, system-ui, sans-serif)', fontSize: '12px' } },
+      option: { style: { whiteSpace: 'normal', overflowWrap: 'anywhere' } },
+    };
   }
 
   protected submissionBlocked(): boolean {

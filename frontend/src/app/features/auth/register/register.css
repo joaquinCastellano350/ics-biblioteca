@@ -22,7 +22,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .full-width { grid-column: 1 / -1; }
 label { color: var(--bdu-ink, #193e46); font-size: 11px; font-weight: 600; }
-input, select {
+input {
   width: 100%;
   min-width: 0;
   min-height: 43px;
@@ -36,13 +36,33 @@ input, select {
   font-size: 12px;
 }
 input::placeholder { color: #56665d; opacity: 1; }
-input:hover, select:hover { border-color: #8ba56b; }
-input[aria-invalid='true'], select[aria-invalid='true'] { border-color: #a02b32; }
-input:focus-visible, select:focus-visible { outline: 2px solid #8ba56b; outline-offset: 1px; }
+input:hover { border-color: #8ba56b; }
+input[aria-invalid='true'] { border-color: #a02b32; }
+input:focus-visible { outline: 2px solid #8ba56b; outline-offset: 1px; }
+.university-select {
+  width: 100%;
+  min-width: 0;
+  --p-select-background: #fff;
+  --p-select-color: #243c42;
+  --p-select-border-color: #cfd9d1;
+  --p-select-hover-border-color: #8ba56b;
+  --p-select-focus-border-color: #8ba56b;
+  --p-select-invalid-border-color: #a02b32;
+  --p-select-border-radius: 8px;
+  --p-select-placeholder-color: #56665d;
+}
 .hint, .field-hint { margin: 0; color: var(--bdu-muted, #4d615c); font-size: 10px; }
 .field-error { color: #90252d; font-size: 11px; overflow-wrap: anywhere; }
+.field-error, .error-banner {
+  --p-message-simple-content-padding: 0;
+  --p-message-content-sm-padding: 0;
+  --p-message-text-sm-font-size: 11px;
+  --p-message-text-font-weight: 400;
+  --p-message-error-simple-color: #90252d;
+}
+p-message.field-error { display: block; }
 .field-error:empty, .hint:empty { display: none; }
-.error-banner { margin: 0 0 16px; padding: 11px 13px; border: 1px solid #dfb7bb; border-radius: 8px; background: #fff3f3; color: #90252d; font-size: 12px; overflow-wrap: anywhere; }
+.error-banner { display: block; margin: 0 0 16px; padding: 11px 13px; border: 1px solid #dfb7bb; border-radius: 8px; background: #fff3f3; color: #90252d; font-size: 12px; overflow-wrap: anywhere; --p-message-text-sm-font-size: 12px; }
 .actions { display: flex; flex-direction: column; gap: 8px; margin-top: 23px; }
 .actions p-button {
   display: block;

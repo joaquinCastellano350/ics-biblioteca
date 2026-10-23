@@ -4,6 +4,7 @@ import type { OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
+import { ButtonModule } from 'primeng/button';
 import { Register } from './register';
 import type { RegistrationUniversity } from './register';
 import { UniversitiesService } from './universities.service';
@@ -13,7 +14,7 @@ import type { RegistrationErrorResponse, RegistrationFieldErrors, RegistrationRe
 @Component({
   selector: 'app-register-page',
   standalone: true,
-  imports: [Register, RouterLink],
+  imports: [Register, RouterLink, ButtonModule],
   templateUrl: './register-page.html',
   styleUrl: './register-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

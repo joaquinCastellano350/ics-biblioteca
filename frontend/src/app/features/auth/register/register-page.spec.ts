@@ -31,6 +31,11 @@ describe('RegisterPage', () => {
   }
 
   beforeEach(async () => {
+    vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
+      matches: false, media: query, onchange: null,
+      addListener: vi.fn(), removeListener: vi.fn(),
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+    })));
     await TestBed.configureTestingModule({
       imports: [RegisterPage],
       providers: [
@@ -44,7 +49,7 @@ describe('RegisterPage', () => {
     fixture.detectChanges();
   });
 
-  afterEach(() => { http.verify(); vi.restoreAllMocks(); });
+  afterEach(() => { http.verify(); fixture?.destroy(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
   function completeLoad(): Register {
     const request = http.expectOne('/api/universities');
@@ -90,17 +95,24 @@ describe('RegisterPage', () => {
     completeLoad(); // expectOne también detecta solicitudes duplicadas.
   });
 
-  it('muestra las opciones recibidas y habilita el formulario', () => {
+  it('muestra las opciones recibidas y permite seleccionar su UUID en el formulario', async () => {
     const register = completeLoad();
     expect(register.universities()).toEqual(universities);
     expect(register.universitiesLoading()).toBe(false);
     expect(register.universitiesError()).toBeNull();
     expect(register.submitDisabled()).toBe(false);
-    const select: HTMLSelectElement = fixture.nativeElement.querySelector('select');
-    expect(select.options.length).toBe(2);
-    expect(select.options[1].value).toBe(universities[0].id);
-    expect(select.options[1].textContent).toContain(universities[0].name);
-    expect(select.matches(':disabled')).toBe(false);
+    const select: HTMLElement = fixture.nativeElement.querySelector('[role="combobox"]');
+    expect(select.getAttribute('aria-disabled')).toBe('false');
+    select.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const options = document.querySelectorAll<HTMLElement>('[role="option"]');
+    expect(options.length).toBe(1);
+    expect(options[0].textContent).toContain(universities[0].name);
+    options[0].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(register.form.controls.universityId.value).toBe(universities[0].id);
     expect(fixture.nativeElement.querySelector('fieldset').disabled).toBe(false);
     expect(fixture.nativeElement.querySelector('button[type="submit"]').disabled).toBe(false);
   });
@@ -131,7 +143,14 @@ describe('RegisterPage', () => {
     http.expectOne('/api/universities').flush({}, { status: 503, statusText: 'Unavailable' });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('No se pudieron cargar las facultades.');
-    fixture.nativeElement.querySelector('.retry-button').click();
+    const retry: HTMLButtonElement = fixture.nativeElement.querySelector('.retry-button button');
+    expect(retry.type).toBe('button');
+    expect(retry.disabled).toBe(false);
+    retry.focus();
+    expect(document.activeElement).toBe(retry);
+    retry.click();
+    retry.click(); // Antes de quitarlo del DOM, el guard debe impedir otro GET.
+    http.expectNone('/api/auth/register');
     fixture.detectChanges();
     expect(fixture.componentInstance.universitiesError()).toBeNull();
     expect(fixture.componentInstance.universitiesLoading()).toBe(true);
@@ -146,10 +165,14 @@ describe('RegisterPage', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.universitiesError()).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('No hay facultades disponibles.');
-    const retry: HTMLButtonElement = fixture.nativeElement.querySelector('.retry-button');
+    const retry: HTMLButtonElement = fixture.nativeElement.querySelector('.retry-button button');
+    expect(retry.type).toBe('button');
     expect(retry.textContent).toContain('Volver a consultar facultades');
     retry.click();
+    retry.click();
     fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.retry-button')).toBeNull();
+    http.expectNone('/api/auth/register');
     completeLoad();
   });
 

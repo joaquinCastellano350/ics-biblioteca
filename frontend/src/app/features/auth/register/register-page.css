@@ -67,17 +67,21 @@ nav a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .register-form { min-width: 0; background: #fff; }
 .retry-actions { padding: 0 38px 26px; }
 .retry-button {
-  padding: 10px 14px;
-  border: 1px solid var(--bdu-ink, #193e46);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--bdu-ink, #193e46);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+  display: inline-block;
+  --p-button-padding-x: 14px;
+  --p-button-padding-y: 10px;
+  --p-button-border-radius: 8px;
+  --p-button-label-font-weight: 400;
+  --p-button-outlined-primary-color: #193e46;
+  --p-button-outlined-primary-border-color: #193e46;
+  --p-button-outlined-primary-hover-background: #e9eee5;
+  --p-button-outlined-primary-active-background: #dfe6d9;
+  --p-button-primary-focus-ring-color: #8ba56b;
+  --p-button-focus-ring-width: 2px;
+  --p-button-focus-ring-style: solid;
+  --p-button-focus-ring-offset: 3px;
 }
-.retry-button:hover { background: #e9eee5; }
-nav a:focus-visible, .retry-button:focus-visible { outline: 2px solid #8ba56b; outline-offset: 3px; }
+nav a:focus-visible { outline: 2px solid #8ba56b; outline-offset: 3px; }
 @media (max-width: 1100px) {
   .register-page { width: calc(100% - 56px); }
 }
