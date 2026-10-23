@@ -98,6 +98,7 @@ correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
 ## Documentación
 
 - [Vocabulario del dominio](CONTEXT.md).
+- [Landing e integración de navegación](docs/landing-integracion.md).
 - [Propuesta de modelo de datos](docs/modelo-de-datos.md).
 - [Diagrama del modelo](docs/modelo-de-datos.mmd).
 - [Registro de verificación de la puesta en marcha](docs/verificacion-inicial.md).
