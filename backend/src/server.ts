@@ -3,9 +3,15 @@ import { checkDatabase, database } from './database.js';
 import { serverPort } from './env.js';
 import { checkStorage, storage } from './storage.js';
 import { listUniversities } from './modules/accounts/universities.repository.js';
+import { RegistrationService } from './modules/accounts/registration.service.js';
+import { PostgresRegistrationRepository } from './modules/accounts/registration.repository.js';
 
 const port = serverPort();
-const server = createApp({ checkDatabase, checkStorage, listUniversities }).listen(port, () => {
+const registrationService = new RegistrationService(new PostgresRegistrationRepository(database));
+const server = createApp({
+  checkDatabase, checkStorage, listUniversities, registrationService,
+  production: process.env['NODE_ENV'] === 'production',
+}).listen(port, () => {
   console.log(`API disponible en el puerto ${port}.`);
 });
 

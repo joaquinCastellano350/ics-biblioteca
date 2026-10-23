@@ -1,390 +1,485 @@
-# Integración de HU-02 con la arquitectura de HU-03
+# HU-02 — Registro e integración futura con HU-03
 
-Fecha de preparación: 22 de octubre de 2026.
+Fecha de preparación inicial: 2026-10-22. Última revisión: 2026-10-23 (hora local).
 
-## 1. Estado y referencias
+## 1. Alcance y estado real
 
-Este documento acompaña el futuro Pull Request de HU-02. Distingue código local, resultados históricos y propuestas pendientes de autorización.
+Este documento acompaña el futuro Pull Request de HU-02. Distingue implementación local, verificaciones históricas y propuestas pendientes.
 
-El alcance de este trabajo es exclusivamente HU-02, reutilizando la infraestructura de autenticación de HU-03. HU-04 y HU-06 están fuera del alcance: no se implementarán ni modificarán como parte de este trabajo.
+**HU-02 se implementó sin merge ni incorporación de archivos de HU-03.** La estrategia anterior de incorporar primero el PR del compañero quedó sustituida por una implementación propia de registro sobre la rama actual, conservando contratos compatibles para una integración futura.
 
-| Referencia | Estado al crear este documento |
+**El registro está implementado y sus siete casos de integración real fueron aprobados en PostgreSQL 17.11 aislado, sin acceder a Neon.** El formulario dejó de ser una vista previa y puede enviar solicitudes reales. La persistencia, rollback y concurrencia se verificaron en un contenedor temporal; este y sus datos tmpfs fueron eliminados después de las pruebas. Esto no equivale a probar ni autorizar escrituras sobre la base compartida.
+
+**HU-04 y HU-06 permanecen fuera del alcance.** No se implementarán ni modificarán como parte de este trabajo. Tampoco se incorporaron login manual, logout, restauración de sesión ni protección de otras funciones.
+
+| Referencia | Estado revisado |
 | --- | --- |
 | Rama local | `feature/hu-02-registro` |
-| Commit inicial de HU-02 | `195f5f52a82059550e362db55565c72f5a2571ec` |
-| Mensaje del commit | `feat(hu-02): agregar formulario y carga de facultades` |
-| Trabajo preservado | 19 archivos: 12 nuevos y 7 modificados |
+| Commit inicial HU-02 | `195f5f52a82059550e362db55565c72f5a2571ec` |
+| Mensaje inicial | `feat(hu-02): agregar formulario y carga de facultades` |
+| Alcance del commit inicial | 19 archivos: 12 nuevos y 7 modificados |
+| Último commit confirmado | `3a6fab578f53ffa261ff62f8364385da1929a1c8` |
+| Mensaje del último commit | `docs: documentar integración HU-02 y HU-03` |
 | Base anterior | `260f2edc74e8652a6f7845aca797ece177225f0a` |
-| PR de HU-03 revisado | [PR #1](https://github.com/joaquinCastellano350/ics-biblioteca/pull/1) |
-| Commit de HU-03 revisado | `ff2b0310b3d991ff5f6e696b942d711ba1e3562f` |
-| Referencia remota disponible localmente | `origin/HU-3-Inicio-Sesion`, en el commit revisado |
-| Integración de HU-03 en esta rama | No realizada |
+| PR de HU-03 analizado anteriormente | [PR #1](https://github.com/joaquinCastellano350/ics-biblioteca/pull/1) |
+| Commit fijado del PR | `ff2b0310b3d991ff5f6e696b942d711ba1e3562f` |
+| HU-03 incorporada | No |
+| Registro posterior al commit documental | Implementado en el directorio de trabajo; sin confirmar |
+| Estado antes de la etapa 7 | 8 archivos modificados y 13 sin seguimiento |
+| Estado al actualizar este documento | 9 archivos modificados y 15 sin seguimiento; nada preparado en staging |
 
-El directorio de trabajo estaba limpio antes de crear este documento. Este archivo se crea sin prepararlo en el índice ni confirmarlo en un commit. Las referencias remotas no se actualizaron desde GitHub para esta tarea; no constituyen una comprobación del estado remoto actual.
+No se actualizaron referencias remotas ni se verificó el estado actual del PR en GitHub durante esta revisión. Su commit se consultó únicamente mediante objetos Git locales.
 
-**El registro real continúa deshabilitado. No están implementados localmente `POST /api/auth/register`, la creación de usuarios ni el inicio automático de sesión.**
+## 2. Requisitos y cobertura funcional
 
-## 2. Resumen funcional
-
-### HU-02 — Registrar una cuenta
+Fuente: `Documentacionproyecto/HISTORIASDEUSUARIO.MD`, documento externo al repositorio.
 
 Actor: visitante.
 
-Descripción documentada: «Como visitante, quiero crear una cuenta, para acceder a las funciones personales de la biblioteca».
+Descripción: «Como visitante, quiero crear una cuenta, para acceder a las funciones personales de la biblioteca».
 
-Criterios de aceptación:
+| Criterio documentado de HU-02 | Implementación y límite de verificación |
+| --- | --- |
+| Solicitar nombre, apellido, facultad, correo y contraseña | Cinco campos reactivos, cinco propiedades explícitas en el POST y validación backend |
+| Elegir facultad de la lista cerrada documentada | GET público, UUID real, validación de pertenencia en Angular y existencia dentro de la transacción; las 30 facultades se verificaron históricamente por lectura |
+| Aceptar correo válido de cualquier dominio, sin acreditar estudiante ni confirmar correo | Sin restricción institucional ni confirmación; correo normalizado en backend |
+| Señalar datos faltantes o inválidos y rechazar correo registrado | Validaciones locales y backend, errores por campo, HTTP 400/409; duplicado y concurrencia verificados en PostgreSQL aislado |
+| Iniciar sesión y mostrar la landing al completar el registro | Creación transaccional y cookie verificadas con PostgreSQL real aislado; navegación a `/` comprobada con HTTP simulado. La bienvenida de Angular es el destino temporal autorizado, no la landing definitiva |
+| No aplicar complejidad de contraseña | Se acepta contraseña no vacía, sin confirmación ni composición obligatoria; límite técnico autorizado de 1024 bytes UTF-8 en backend |
 
-- Solicitar nombre, apellido, facultad, correo electrónico y contraseña.
-- Elegir facultad de la lista cerrada de 30 instituciones documentadas.
-- Aceptar correo válido de cualquier dominio, sin acreditar condición de estudiante ni confirmar correo.
-- Señalar datos faltantes o inválidos y rechazar correo ya registrado.
-- Iniciar sesión y mostrar la landing al completar el registro.
-- No aplicar una política de complejidad de contraseña.
+RF-01 corresponde al registro. RF-02 describe el acceso a la cuenta para funciones personales: aquí solo se prepara la sesión automática posterior al registro, sin implementar el inicio de sesión manual.
 
-RF-01 establece el registro; RF-02 establece el inicio de sesión para acceder a funciones personales. La sesión automática de HU-02 requiere compartir los mecanismos de RF-02.
+La contraseña permanece transitoriamente en memoria del formulario y de la solicitud para procesarla y conservar los valores ante un error. No se persiste en texto plano, Storage, cookies JavaScript ni logs. En producción el transporte deberá usar HTTPS.
 
-### Implementado localmente
+## 3. Inventario de archivos
 
-- Componente standalone `Register`, con formularios reactivos y los cinco campos.
-- Validación de obligatorios, correo y pertenencia a las opciones recibidas; mensajes en español.
-- Contraseña sin exigencia de complejidad ni confirmación.
-- Evento `registerRequested`, sin HTTP dentro del formulario.
-- Entradas de carga, errores externos y `submitDisabled`, cuyo valor predeterminado es `false`.
-- Página `RegisterPage`, ruta pública diferida `/registro`, bienvenida conservada en `/` y enlaces de ida y vuelta.
-- Servicio Angular de facultades, carga, error, lista vacía, reintento manual y cancelación al destruir la página.
-- Endpoint público `GET /api/universities`, consulta fija de `id` y `name`, cliente Prisma compartido e inyección de dependencias.
-- En RegisterPage, `submitDisabled=true`: se pueden completar los campos después de la carga, pero no se emite el registro, ni por envío forzado.
+Responsabilidad funcional de los archivos siguientes: HU-02. No se asignan nombres personales ni mantenimiento exclusivo que no haya sido acordado.
 
-### Disponible únicamente en el PR de HU-03
+### 3.1 Archivos creados en el commit inicial
 
-- Módulo backend controller → service → repository.
-- `AccountsService`, `AccountsRepository` y `PrismaAccountsRepository`.
-- Modelos Prisma originales `University`, `User` y `Session`, migración y seed institucional.
-- Login, consulta de sesión y otra implementación del endpoint de facultades.
-- Hashing Argon2id, token opaco, hash SHA-256, cookie y vencimiento absoluto de seis horas.
-- `AuthService` Angular, restauración, revalidación, vencimiento y diálogo de login que conserva la página abierta.
-- Servicio de la SPA desde Express en producción bajo un origen común.
+| Ruta | Función actual |
+| --- | --- |
+| `backend/src/modules/accounts/universities.repository.ts` | Consulta fija de id y name con cliente Prisma existente y orden SQL alfabético |
+| `backend/test/universities.test.ts` | Contrato 200, vacío y 503 con servicios simulados; actualizado para inyectar registro |
+| `frontend/src/app/features/auth/register/register.ts` | Formulario reactivo, validaciones, evento y entradas de carga, errores y bloqueo |
+| `frontend/src/app/features/auth/register/register.html` | Campos, mensajes, accesibilidad y estado de envío |
+| `frontend/src/app/features/auth/register/register.css` | Diseño adaptable del formulario |
+| `frontend/src/app/features/auth/register/register.spec.ts` | Validación y bloqueo de emisión, incluso ante envío forzado |
+| `frontend/src/app/features/auth/register/register-page.ts` | Facultades, POST de registro, estados, errores y navegación |
+| `frontend/src/app/features/auth/register/register-page.html` | Conexión de entradas y evento del formulario, enlace al inicio y reintento de facultades |
+| `frontend/src/app/features/auth/register/register-page.css` | Presentación de la página; conserva reglas de la antigua vista previa sin uso actual |
+| `frontend/src/app/features/auth/register/register-page.spec.ts` | Carga, reintento, registro y errores con HTTP interceptado |
+| `frontend/src/app/features/auth/register/universities.service.ts` | GET relativo de facultades |
+| `frontend/src/app/features/auth/register/universities.service.spec.ts` | Pruebas del servicio de facultades |
 
-El PR identifica su alcance como login de SCRUM-8; registro, logout y landing quedan separados. Nada de esta lista se atribuye todavía al código local.
+### 3.2 Archivos existentes modificados en el commit inicial
 
-### Pendiente
+| Ruta | Función y cambios posteriores |
+| --- | --- |
+| `backend/src/app.ts` | Salud y facultades; ahora también router de registro con servicio inyectado |
+| `backend/src/server.ts` | Composición productiva de dependencias; ahora conecta servicio de registro y repositorio al cliente compartido |
+| `backend/test/app.test.ts` | Prueba de salud/disponibilidad con dependencias simuladas; incorpora stub de registro |
+| `frontend/src/app/app.routes.ts` | Ruta pública diferida `/registro`, conservada |
+| `frontend/src/app/app.ts` | Bienvenida solo en ruta inicial y navegación, conservadas |
+| `frontend/src/app/app.html` | Bienvenida, outlet y enlace Crear cuenta, conservados |
+| `frontend/src/app/app.spec.ts` | Navegación; expectativas actualizadas y POST simulado con retorno al inicio |
 
-Integrar la infraestructura de HU-03 necesaria para HU-02; implementar registro transaccional y sesión automática; acordar landing y navegación; verificar la combinación.
+### 3.3 Quince archivos nuevos posteriores al commit documental
 
-## 3. Inventario local preservado
+| Ruta | Función, dependencias e impacto |
+| --- | --- |
+| `backend/src/modules/accounts/registration.validation.ts` | Validación de tipos, campos, correo, UUID y límite UTF-8; usa validator, sin Express ni base |
+| `backend/src/modules/accounts/registration.security.ts` | Argon2id y criptografía de tokens; independiente de persistencia |
+| `backend/src/modules/accounts/registration.service.ts` | Orquesta validación, hash y una operación atómica inyectada; separa JSON y cookie |
+| `backend/src/modules/accounts/registration.repository.ts` | Implementa createUserAndSession con Prisma inyectado, SQL parametrizado y una transacción |
+| `backend/src/modules/accounts/registration.controller.ts` | Adaptador Express, parser local, controles HTTP y cookie |
+| `backend/test/registration.validation.test.ts` | Datos válidos, inválidos y límites |
+| `backend/test/registration.security.test.ts` | Hash, verificación y tokens locales |
+| `backend/test/registration.service.test.ts` | Orquestación con repositorio simulado |
+| `backend/test/registration.repository.test.ts` | Interacciones transaccionales y SQL con cliente simulado; no verifica rollback real |
+| `backend/test/registration.test.ts` | HTTP local con servicio simulado, cookies, errores y límites |
+| `backend/test/integration/postgres-fixture.ts` | Destino local estricto, cliente independiente, preparación del SQL original en base vacía y fallo inducido; no usa conexiones de desarrollo |
+| `backend/test/integration/registration.integration.test.ts` | Siete casos reales de persistencia, seguridad, errores, rollback, concurrencia y cookie; ejecución manual separada de la suite unitaria |
+| `frontend/src/app/features/auth/register/registration.types.ts` | Respuesta pública y errores; reutiliza tipos del formulario |
+| `frontend/src/app/features/auth/register/registration.service.ts` | POST relativo con cinco campos explícitos y encabezado requerido |
+| `frontend/src/app/features/auth/register/registration.service.spec.ts` | HTTP interceptado, contrato, errores y ausencia de escritura en Storage/cookies |
 
-Responsabilidad funcional: HU-02. No se asigna un nombre personal ni una responsabilidad de mantenimiento que no haya sido acordada.
+### 3.4 Archivos modificados desde el último commit
 
-### Archivos creados en el commit inicial
+Los ocho archivos de código/pruebas modificados son:
 
-| Ruta | Función y dependencias | Impacto o riesgo de integración |
-| --- | --- | --- |
-| `backend/src/modules/accounts/universities.repository.ts` | SELECT fijo mediante el cliente Prisma existente | Se propone retirarlo al adoptar el repositorio del PR |
-| `backend/test/universities.test.ts` | Contrato HTTP con servicios simulados | Adaptar la inyección sin perder casos 200, vacío y 503 |
-| `frontend/src/app/features/auth/register/register.ts` | Estado, validaciones, evento y bloqueo de envío; Angular Forms | Mantenerlo independiente de autenticación y HTTP |
-| `frontend/src/app/features/auth/register/register.html` | Campos, accesibilidad, mensajes y botón PrimeNG | No habilitar envío por el solo hecho de integrar login |
-| `frontend/src/app/features/auth/register/register.css` | Diseño adaptable y variables visuales existentes | Evitar interferencias con estilos del modal |
-| `frontend/src/app/features/auth/register/register.spec.ts` | Validaciones y emisión, incluido bloqueo forzado | Conservar cobertura existente |
-| `frontend/src/app/features/auth/register/register-page.ts` | Carga y reintento mediante UniversitiesService | Futuro punto de conexión con el AuthService del compañero |
-| `frontend/src/app/features/auth/register/register-page.html` | Aviso de vista previa y entradas de Register | Mantener `submitDisabled=true` durante la integración inicial |
-| `frontend/src/app/features/auth/register/register-page.css` | Presentación de página y reintento | Estilos encapsulados |
-| `frontend/src/app/features/auth/register/register-page.spec.ts` | Carga, UUID, error, vacío, cancelación y bloqueo | Mantener HTTP simulado |
-| `frontend/src/app/features/auth/register/universities.service.ts` | GET relativo y respuesta tipada | Compatible con el endpoint del PR |
-| `frontend/src/app/features/auth/register/universities.service.spec.ts` | Peticiones interceptadas por HttpTestingController | Sin conexiones reales |
+- `backend/src/app.ts`
+- `backend/src/server.ts`
+- `backend/test/app.test.ts`
+- `backend/test/universities.test.ts`
+- `frontend/src/app/features/auth/register/register-page.ts`
+- `frontend/src/app/features/auth/register/register-page.html`
+- `frontend/src/app/features/auth/register/register-page.spec.ts`
+- `frontend/src/app/app.spec.ts`
 
-### Archivos existentes modificados en el commit inicial
+La etapa 7 modifica además únicamente `docs/integracion-hu02-hu03.md`. No se eliminaron ni reemplazaron archivos por versiones de HU-03. No se modificaron modelos Prisma, migraciones, dependencias ni configuración.
 
-| Ruta | Cambio local | Impacto o riesgo de integración |
-| --- | --- | --- |
-| `backend/src/app.ts` | Dependencia y ruta de facultades; respuesta 503 | Combinar con accountsController, sin duplicar rutas |
-| `backend/src/server.ts` | Inyecta el repositorio de facultades | Sustituir por composición de AccountsService del PR |
-| `backend/test/app.test.ts` | Agrega servicio simulado de facultades | Adaptar al contrato final de createApp |
-| `frontend/src/app/app.routes.ts` | Ruta `/registro` con carga diferida | Conservar; el PR revisado no modifica este archivo |
-| `frontend/src/app/app.ts` | Detecta ruta inicial e importa RouterLink | Combinar con restauración única y LoginDialog |
-| `frontend/src/app/app.html` | Bienvenida solo en inicio y enlace Crear cuenta | Conservar bienvenida, outlet y agregar un único modal |
-| `frontend/src/app/app.spec.ts` | Navegación y estado bloqueado con HTTP simulado | El PR lo elimina: preservar y adaptar, no aceptar esa eliminación |
+## 4. Flujo implementado y decisiones técnicas
 
-### Reemplazos y eliminaciones
+1. Register valida obligatorios, correo y facultad recibida. Emite registerRequested; no realiza HTTP.
+2. RegisterPage conserva la carga de facultades, errores, vacío y reintento. Impide registrar mientras faltan facultades o hay un envío pendiente.
+3. RegistrationService Angular envía exactamente los cinco campos mediante ruta relativa y encabezado propio. El navegador gestiona la cookie HttpOnly bajo el mismo origen; JavaScript no guarda el token.
+4. Express exige el encabezado y application/json, limita el cuerpo a 16 KiB y delega al servicio existente.
+5. El servicio valida y normaliza; calcula Argon2id fuera de la transacción y genera token de 32 bytes. Invoca createUserAndSession una sola vez.
+6. El repositorio ejecuta database.$transaction. Comprueba universidad con FOR KEY SHARE, obtiene clock_timestamp con precisión de milisegundos e inserta usuario y sesión con UUID explícitos y el mismo instante de referencia.
+7. La sesión guarda solo SHA-256 del token y vence exactamente seis horas después de created_at. Cualquier rechazo dentro del callback se entrega a Prisma para resolver la transacción.
+8. El resultado del repositorio contiene solo usuario público y fechas. El servicio excluye propiedades adicionales, genera fechas ISO UTC y separa publicResponse de los datos privados para la cookie.
+9. El controlador espera el resultado del servicio, emite la cookie y responde 201. No imprime cuerpo, contraseña, hash ni token.
+10. Angular conserva el formulario en un fallo, muestra errores y permite reintento manual. Solo tras éxito navega a `/`. Las suscripciones se cancelan al destruir la página; no hay reintento automático del POST.
 
-No se eliminaron archivos durante el trabajo preservado ni se reemplazaron archivos por versiones de HU-03.
+La prevención de duplicados es local a esa instancia de página. No implica idempotencia entre pestañas, clientes o reintentos después de perder una respuesta: la garantía de unicidad corresponde a PostgreSQL.
 
-Se propone eliminar `backend/src/modules/accounts/universities.repository.ts` únicamente después de migrar sus consumidores al módulo del compañero y verificar la consolidación. Las ocho líneas retiradas del commit inicial son cambios internos de archivos, no eliminaciones de archivos.
+## 5. Contratos HTTP
 
-## 4. Arquitectura y contratos compartidos
+### GET /api/universities
 
-### Endpoints
+Endpoint público conservado, sin duplicarlo ni sustituirlo por el del PR. HTTP 200 con `{ universities: [{ id, name }] }`, incluso vacío. HTTP 503 con código SERVICE_UNAVAILABLE si falla la consulta. Orden por name ASC e id ASC.
 
-| Endpoint | Local actualmente | Contrato o comportamiento compartido |
-| --- | --- | --- |
-| `GET /api/universities` | Implementado y verificado históricamente | Público; 200 con `{ universities: [...] }`, incluso vacío; 503 si falla consulta |
-| `POST /api/auth/login` | Solo en PR | 200 con AuthResponse y cookie; 400 por validación; 401 por credenciales incorrectas |
-| `GET /api/auth/session` | Solo en PR | 200 con AuthResponse; 401 si sesión ausente, desconocida, vencida o revocada |
-| `POST /api/auth/register` | Pendiente | 201 con AuthResponse y cookie; 400 por validación; 409 por correo ocupado |
-| `POST /api/auth/logout` | Pendiente, fuera de esta integración | Contrato documentado: 204 y eliminación de cookie; 503 si no se confirma revocación |
+### POST /api/auth/register
 
-### Estructuras
+Requiere `Content-Type: application/json` y `X-Biblioteca-Request: 1`. Límite de cuerpo: 16384 bytes. Acepta JSON con charset UTF-8; no acepta formularios URL-encoded ni multipart.
+
+Solicitud:
 
 ```typescript
-type University = { id: string; name: string };
-type UniversitiesResponse = { universities: University[] };
-type RegisterRequest = {
+type RegistrationRequest = {
   firstName: string;
   lastName: string;
   universityId: string;
   email: string;
   password: string;
 };
-type AuthResponse = {
+```
+
+HTTP 201:
+
+```typescript
+type RegistrationResponse = {
   user: {
     id: string;
     firstName: string;
     lastName: string;
     email: string;
-    university: University;
+    university: { id: string; name: string };
   };
   session: { createdAt: string; expiresAt: string };
   serverTime: string;
 };
 ```
 
-Las fechas del contrato son RFC 3339 UTC. ErrorResponse contiene `error.code`, `error.message` en español y `error.fields` opcional para campos concretos. No se usan mensajes de texto para tomar decisiones de código ni se devuelven secretos.
+Error: `{ error: { code, message, fields? } }`. fields contiene mensajes por nombre de campo cuando corresponde. No incluye stack, causa, SQL ni datos de conexión.
 
-### Validaciones, contraseñas y errores
-
-- Reutilizar del PR `normalizeEmail`, `validEmail`, `validPassword`, `hashPassword` y `verifyPassword`.
-- Normalización propuesta por esa implementación: trim y minúsculas; contraseña sin transformaciones silenciosas.
-- Argon2id del PR: memoryCost 19456, timeCost 2 y parallelism 1.
-- El PR limita contraseñas a 1024 bytes. Es un límite técnico adicional, pendiente de coordinar para HU-02; no es una política de complejidad.
-- Registro debe comprobar facultad existente y mantener la unicidad de correo bajo concurrencia.
-- Ampliar posteriormente AccountError para `EMAIL_ALREADY_REGISTERED` y su HTTP 409.
-- El contrato distingue 500 inesperado de 503 por dependencia no disponible. El handler del PR convierte errores no reconocidos a 503; coordinar la clasificación antes de registro.
-
-### Sesiones y cookies del PR
-
-- Token aleatorio de 32 bytes en base64url; guardar solo su SHA-256 hexadecimal.
-- Duración absoluta de seis horas, sin extensión por actividad.
-- Reloj PostgreSQL y columnas con precisión de milisegundos.
-- Cookie `biblioteca_session`: HttpOnly, SameSite=Lax, Path=/, Secure según producción, Max-Age de seis horas.
-- Escrituras protegidas por `X-Biblioteca-Request: 1`.
-- JSON de hasta 16 KiB; respuestas de cuentas con Cache-Control: no-store.
-- Reutilizar la selección pública de usuario; excluir hash de contraseña y token del JSON.
-
-### Estado Angular
-
-Adoptar un único AuthService: sesión en memoria, restauración inicial, revalidación al recuperar foco y vencimiento. No crear un estado de autenticación paralelo en RegisterPage.
-
-El método `accept()` del PR es privado. El registro deberá incorporarse dentro del servicio y reutilizar sus controles de respuestas fuera de orden, sin acceder a miembros privados desde la página ni ejecutar un login adicional después del registro.
-
-## 5. Prisma original y base existente
-
-El esquema local tiene generador y proveedor, pero aún no contiene modelos de dominio. La inspección histórica autorizada de Neon encontró `universities`, `users` y `sessions`; no se repite esa consulta para preparar esta documentación.
-
-El PR aporta los modelos y el SQL originales. Se propone incorporarlos como fuente de diseño y mantener su historial, sin reconstruir migraciones ni crear tablas equivalentes. Los CHECK de correo, hash y duración están en SQL y no deben perderse por revisar únicamente schema.prisma.
-
-No volver a ejecutar la migración ni el seed sobre la rama existente. La comprobación histórica encontró las 30 facultades documentadas, con coincidencia exacta y sin duplicados. La copia interna del modelo usa `faculties` y `email_normalized`, distintos de la estructura inspeccionada y del PR; coordinar su documentación sin modificar la base.
-
-## 6. Decisiones de integración y conflictos previstos
-
-| Diferencia | Solución propuesta | Estado |
+| HTTP | Código o causa | Presentación Angular |
 | --- | --- | --- |
-| Endpoint de facultades duplicado | Conservar controller → AccountsService → PrismaAccountsRepository del PR | No aplicada |
-| Orden SQL local frente a comparación española del PR | Conservar el orden del repositorio del PR, sin cambiar contrato | No aplicada |
-| app.ts y server.ts de backend modificados por ambos trabajos | Componer una sola instancia compartida de cuentas y conservar salud | No aplicada |
-| Raíz Angular modificada por ambos trabajos | Conservar bienvenida y `/registro`; agregar modal y restore una vez | No aplicada |
-| PR elimina app.spec.ts | Conservar pruebas locales y simular la consulta inicial de sesión | No aplicada |
-| Modelo local vacío | Incorporar esquema y migraciones originales del compañero | No aplicada |
-| Nombre visible facultad frente a universidad | Mantener contrato técnico y coordinar vocabulario visible | Pendiente |
-| createSession abre su propia transacción | Para registro, ampliar repositorio con creación atómica de usuario y sesión | Fuera de la integración inicial |
-| Landing fuera del PR | Acordar ruta y responsable; bienvenida actual no equivale a landing definitiva | Pendiente |
+| 400 | VALIDATION_ERROR o UNIVERSITY_NOT_FOUND; incluye JSON mal formado | Mensaje general y campos conocidos con mensajes de texto |
+| 403 | FORBIDDEN: encabezado ausente/incorrecto | Mensaje general |
+| 409 | EMAIL_ALREADY_REGISTERED | Correo ocupado, también junto al campo |
+| 413 | PAYLOAD_TOO_LARGE | Mensaje general |
+| 415 | UNSUPPORTED_MEDIA_TYPE: contenido/codificación incompatible | Mensaje general |
+| 500 | INTERNAL_ERROR | Mensaje general sin detalles internos |
+| 503 | SERVICE_UNAVAILABLE | Mensaje general con posibilidad de reintento manual |
+| Sin respuesta HTTP | Error de conexión, status 0 en Angular | Mensaje de conexión |
 
-Los conflictos de app.ts, app.html y server.ts son previsibles por comparación de contenido; no se ejecutó merge para producir marcadores. En app.spec.ts existe oposición directa entre modificación local y eliminación en el PR.
+Los errores no emiten cookie. Las validaciones del backend se reutilizan, no se duplican en el controlador.
 
-El árbol completo del commit revisado no incluye varios archivos referenciados por sus README: contrato de autenticación, guía de SCRUM-8, ADR-0002, convenciones de UI y auth-flow.spec.ts. Solicitar sus originales o acordar corrección de referencias; no atribuirles contenido no revisado.
+### Contraseña, cookie y sesión
 
-## 7. Plan de incorporación por grupos
+- Nombre/apellido: se recortan espacios exteriores. UUID: se valida y normaliza a minúsculas.
+- Correo: trim y minúsculas, cualquier dominio válido. No se consulta previamente para garantizar unicidad.
+- Contraseña: no vacía, máximo 1024 bytes UTF-8; se conserva exactamente, incluidos espacios. El límite se valida en backend y sus errores se muestran en Angular.
+- Argon2id: memoryCost 19456 KiB, timeCost 2, parallelism 1, salt generado por la biblioteca.
+- Token: 32 bytes criptográficos, base64url. En sessions solo se almacena SHA-256 hexadecimal de 64 caracteres.
+- Cookie: biblioteca_session, HttpOnly, SameSite=Lax, Path=/, Secure cuando NODE_ENV es production. Tras la corrección de la etapa 8 se utiliza Expires absoluto, redondeado hacia abajo a segundos, sin Max-Age para que Express no recalcule el vencimiento. Se comprueba el tiempo restante al responder; si venció o la fecha no es válida, HTTP 503 sin cookie. La duración PostgreSQL permanece en seis horas.
+- No hay token, contraseña ni hashes en el JSON público. No se crean cookies desde JavaScript.
+- No se mantiene un AuthService global ni se restaura sesión al recargar en esta etapa.
+- El controlador local no agrega Cache-Control: no-store; la propuesta anterior lo describía como comportamiento del PR. No se debe atribuir esa cabecera al código actual.
 
-Cada grupo requiere autorización antes de modificar archivos. La existencia de este plan no autoriza operaciones Git, consultas o pruebas por sí misma.
+## 6. Prisma, esquema existente y relación con HU-03
 
-### Grupo 0 — Preparación
+El schema.prisma local sigue sin modelos de dominio. El repositorio no presupone modelos generados de usuario o sesión: recibe el cliente Prisma existente y usa plantillas etiquetadas seguras de $queryRaw dentro de $transaction.
 
-- HU-02 ya está preservada en su rama y commit inicial.
-- Acordar versión de HU-03 y responsables de archivos compartidos.
-- Confirmar estado limpio y detener servidores de desarrollo, con autorización, antes de una futura integración para evitar recargas automáticas.
-- Incorporar este registro documental al historial únicamente cuando se autorice su commit.
+La migración original del commit fijado de HU-03 se leyó desde el objeto Git local, sin incorporarla:
 
-### Grupo 1 — Modelo de datos original
+`backend/prisma/migrations/20261022170000_accounts_and_sessions/migration.sql`
 
-Incorporar directamente los archivos nuevos:
+Sus columnas y restricciones concuerdan con las usadas por el repositorio: users(university_id, email, password_hash, created_at), sessions(user_id, token_hash, created_at, expires_at), UUID, precisión TIMESTAMPTZ(3), FK y duración de seis horas. El índice único de correo se llama users_email_key. La migración usa token_hash CHAR(64) y revoked_at opcional.
 
-```text
-backend/prisma/migrations/20261022170000_accounts_and_sessions/migration.sql
-backend/prisma/migrations/migration_lock.toml
-backend/prisma/seed.ts
-backend/prisma/universities.ts
-```
+Esto es comparación estática contra una referencia histórica, no una nueva inspección de Neon. Traducir correo duplicado requiere SQLSTATE 23505 y esa restricción; otras violaciones únicas no se confunden con correo ocupado. Fallos conocidos de conexión se traducen a dependencia no disponible; los restantes quedan como internos.
 
-Revisar y reemplazar el esquema vacío por la versión original compatible de `backend/prisma/schema.prisma`. No aplicar SQL ni ejecutar seed. Verificación propuesta: revisión de mapeos, generación local del cliente y compilación autorizadas, sin conexión a Neon.
+La documentación interna `docs/modelo-de-datos.md` todavía menciona faculty_id/email_normalized. Difiere del contrato universityId y de las columnas university_id/email de la migración revisada. Se registra la inconsistencia sin modificar ese documento ni la estructura existente.
 
-### Grupo 2 — Módulo backend de cuentas
+### Qué permanece únicamente en HU-03
 
-Incorporar los originales del PR, si no existe trabajo nuevo en esas rutas:
+Según el análisis histórico del commit fijado, permanecen en el PR AccountsService, PrismaAccountsRepository, sus modelos/migraciones/seed originales, login manual, consulta/restauración de sesión, AuthService y diálogo Angular, además de otra implementación de facultades. No se importaron en esta rama. Compartir algoritmos y contratos no significa haber incorporado sus archivos.
 
-```text
-backend/src/accounts/accounts.controller.ts
-backend/src/accounts/accounts.service.ts
-backend/src/accounts/accounts.repository.ts
-backend/src/accounts/prisma-accounts.repository.ts
-backend/src/accounts/credentials.ts
-backend/src/accounts/sessions.ts
-backend/test/auth-http.test.ts
-backend/test/integration/login.test.ts
-```
+### Integración futura: propuesta, sin ejecutar
 
-Verificación propuesta: imports, compilación y pruebas unitarias con repositorio simulado. La prueba de integración real no se ejecuta: crea, actualiza y elimina registros usando la conexión configurada.
+1. Acordar el commit base, responsabilidades de cuentas, contrato de cookie y destino definitivo. Ningún integrante tiene mantenimiento exclusivo asignado por este documento.
+2. Comparar funciones de seguridad y errores antes de consolidar RegistrationService con AccountsService. Conservar una sola operación transaccional, sin crear sesión mediante otra escritura posterior.
+3. Si se autoriza incorporar Prisma original, preservar sus archivos e historial; no reconstruir migraciones ni ejecutar migraciones/seed sobre la base compartida.
+4. Consolidar una sola ruta GET /api/universities y conservar la envoltura pública, UUID y casos vacío/503. Hoy sigue vigente el repositorio local; no está autorizada su eliminación.
+5. Combinar manualmente backend/src/app.ts y server.ts, y eventualmente App Angular, sin perder /registro, bienvenida y pruebas. El PR revisado proponía eliminar app.spec.ts: se debe preservar su cobertura.
+6. Si se adopta el estado Angular compartido, reutilizar una única lógica de autenticación; no efectuar un login adicional tras el registro.
+7. Verificar con simulaciones y una base aislada antes de una integración real autorizada. No hay merge, rama base nueva ni publicación autorizados por este documento.
 
-### Grupo 3 — Composición Express y facultades
+El antiguo plan de incorporar primero todos los grupos de HU-03 queda sin ejecutar y sustituido por esta coordinación futura.
 
-Combinar `backend/src/app.ts`, `backend/src/server.ts`, `backend/test/app.test.ts` y `backend/test/universities.test.ts`. Dejar una sola ruta de facultades. Retirar el repositorio local redundante solo tras adaptar consumidores y con autorización de eliminación.
+## 7. Revisión funcional y límites pendientes
 
-Verificación propuesta: casos públicos 200, vacío y 503, rutas de salud, ausencia de detalles internos y compilación. Sin pruebas reales de base en este grupo.
-
-### Grupo 4 — Autenticación Angular
-
-Incorporar directamente los originales:
-
-```text
-frontend/src/app/auth/auth.types.ts
-frontend/src/app/auth/auth.service.ts
-frontend/src/app/auth/auth.service.spec.ts
-frontend/src/app/auth/login-dialog.ts
-frontend/src/app/auth/login-dialog.html
-frontend/src/app/auth/login-dialog.css
-```
-
-Verificación propuesta: pruebas del servicio y compilación, con HTTP simulado. Preservar vencimiento y protección frente a respuestas antiguas.
-
-### Grupo 5 — Raíz y navegación
-
-Combinar `frontend/src/app/app.ts`, `frontend/src/app/app.html` y `frontend/src/app/app.spec.ts`. Conservar app.routes.ts, los cuatro archivos de Register, los cuatro de RegisterPage y UniversitiesService con sus pruebas.
-
-La bienvenida permanece solo en `/`; el outlet queda fuera de su condición; se monta un único LoginDialog. Restore se llama una sola vez desde App. Adaptar las pruebas de App para responder a la consulta inicial de sesión con HTTP simulado, conservando navegación, facultades y bloqueo de registro.
-
-### Grupo 6 — Documentación y complementos
-
-Revisar por separado:
-
-```text
-CONTEXT.md
-README.md
-backend/README.md
-frontend/README.md
-backend/package.json
-backend/prisma.config.ts
-backend/src/env.ts
-frontend/src/index.html
-```
-
-No copiarlos ciegamente: coordinar vocabulario y enlaces, revisar scripts de migración y seed sin ejecutarlos. El cambio de formato de env.ts puede omitirse; la traducción de index.html es complementaria.
-
-### Grupo 7 — Verificación conjunta y revisión
-
-Ejecutar pruebas unitarias y compilaciones solo con autorización. No asumir que las cifras históricas siguen siendo válidas después de integrar. Revisar navegación, restauración, login y facultades con simulaciones antes de autorizar cualquier prueba real.
-
-El futuro PR de HU-02 puede apuntar inicialmente a HU-3-Inicio-Sesion para mostrar el trabajo propio sobre la arquitectura compartida. Si HU-03 se integra en develop, revisar su método de integración, alinear la rama de HU-02 y verificar el diff antes de cambiar la base del PR. No se publica ni se integra nada como parte de esta documentación.
-
-## 8. Verificaciones históricas
-
-Estos resultados corresponden al código local anterior a HU-03. No se volvieron a ejecutar para crear este archivo y no verifican una combinación futura.
-
-| Verificación | Resultado registrado |
+| Punto revisado | Resultado |
 | --- | --- |
-| Formulario inicial Register | 15 pruebas aprobadas; compilación Angular exitosa |
-| Integración visual Register, RegisterPage y App | 26 pruebas aprobadas; compilación Angular exitosa |
-| Última suite local de backend | 4 pruebas aprobadas, 0 fallidas |
-| Última suite local de frontend | 35 pruebas aprobadas, 0 fallidas |
-| Última compilación backend | Exitosa |
-| Última compilación Angular de producción | Exitosa |
-| Advertencia del paquete inicial Angular | 509,14 kB; excede en 9,14 kB el umbral de advertencia de 500 kB |
-| Express → Neon, consulta autorizada de facultades | HTTP 200, 30 elementos, solo id y name, UUID válidos y sin duplicados |
-| Comparación histórica con historias Markdown | 30 nombres coincidentes; sin faltantes, adicionales ni diferencias |
-| Proxy Angular → Express → Neon | HTTP 200 y las mismas 30 facultades |
-| Ruta /registro | Respuesta HTML HTTP 200; no equivale a revisión visual completa en navegador |
+| Cinco campos y UUID recibido | Formulario → evento → POST explícito → validación → persistencia parametrizada |
+| Contraseña y secretos | Hash antes de persistencia, token separado del JSON y sin logs/Storage en el flujo inspeccionado |
+| Transacción | Una llamada con comprobación e inserciones dentro del callback; persistencia, rollback y concurrencia comprobados también en PostgreSQL real aislado |
+| Errores HTTP | Mapeos 400/403/409/413/415/500/503 implementados y cubiertos |
+| Solicitudes duplicadas | Guardas en formulario y página, bloqueo durante envío y después del éxito |
+| Navegación | Solo en next de una respuesta exitosa; retorno a / verificado con respuesta simulada |
+| Funcionalidades ajenas | No se añadieron login, logout, recuperación/restauración ni protección de otras funciones |
 
-Comandos de la última verificación automatizada local:
+Observaciones históricas, resolución aplicada y límites vigentes:
+
+1. **Desfase de cookie corregido en la etapa 8:** el controlador usa el vencimiento absoluto del servicio, sin Max-Age, y rechaza fechas vencidas o inválidas. Se agregaron seis pruebas locales; el vencimiento de la cookie también se contrastó con la sesión persistida en PostgreSQL real.
+2. **Persistencia real verificada en entorno aislado:** hubo HTTP 201, un usuario y una sesión vinculados, Argon2id verificable y solo SHA-256 del token almacenado. Se comprobó 409 real por duplicado. Los permisos, conectividad y diferencias operativas del usuario de Neon no se verificaron y no quedan autorizados por estos resultados.
+3. **Atomicidad y concurrencia verificadas en base aislada:** un trigger de prueba provocó un fallo real en la creación de sesión después de insertarse el usuario; otra conexión comprobó ausencia de ambas filas. Dos registros simultáneos con el mismo correo normalizado produjeron un 201 y un 409, una cuenta y una sesión. La comprobación del trigger utilizó una secuencia para demostrar que se alcanzó esa inserción; los objetos de fallo se retiraron durante el caso.
+4. **Sesión automática no verificada en navegador real:** falta comprobar cookie recibida/almacenada y vínculo con la sesión persistida en un entorno aislado. No hay endpoint local para recuperar sesión ni una vista global autenticada; eso fue excluido expresamente.
+5. **Landing pendiente:** / muestra la bienvenida actual por decisión temporal autorizada. No equivale a haber incorporado el diseño final.
+6. **Respuesta perdida o cancelación:** destruir la página cancela la suscripción, pero no garantiza deshacer una transacción ya confirmada en el servidor. Un reintento podría devolver 409; no se implementó idempotencia.
+7. **Navegación fallida:** RegisterPage inicia Router.navigate y marca registered; no gestiona explícitamente un rechazo o cancelación de esa navegación. La ruta actual se comprobó con pruebas; el escenario de fallo de navegación no está cubierto.
+8. **Riesgos de integración:** no sustituir funciones por nombres similares sin comparar parámetros, respuestas, clasificación de errores y comportamiento transaccional. La coincidencia histórica de la base no habilita modificarla.
+9. **Advertencias y limpieza pendiente:** presupuesto inicial Angular superado; aviso PrimeUI observado en una ejecución anterior; reglas CSS de vista previa sin uso y comentarios históricos del esquema/servicio. No se modificaron otros archivos para corregirlos.
+
+Los siete escenarios preparados quedaron validados contra PostgreSQL real aislado. Siguen pendientes la revisión en navegador real y la landing definitiva; no se declara validación sobre Neon ni integración con HU-03.
+
+## 8. Verificaciones históricas y comandos
+
+La etapa 7 original fue de lectura y documentación. Posteriormente se corrigió la cookie, se ejecutaron siete casos PostgreSQL aislados y se eliminó el contenedor. En este cierre solo se repitieron las suites generales y compilaciones; no se repitió la integración real.
+
+| Etapa verificada previamente | Resultado |
+| --- | --- |
+| Formulario inicial | 15 pruebas, compilación Angular exitosa |
+| Integración visual inicial | 26 pruebas, compilación Angular exitosa |
+| Facultades antes del registro | Backend 4 y frontend 35; compilaciones exitosas |
+| Validación y seguridad backend | 21 pruebas |
+| Servicio backend, acumulado | 37 pruebas |
+| Repositorio con cliente simulado, acumulado | 50 pruebas |
+| Endpoint y suite backend completa | 73 aprobadas, 0 fallidas |
+| Compilación TypeScript backend posterior al endpoint | Exitosa |
+| Conexión Angular, primera verificación | 51 aprobadas, 2 fallidas: expectativas antiguas de App |
+| Corrección autorizada solo de App | 53 frontend aprobadas, 0 fallidas |
+| Compilación Angular de producción posterior a la conexión | Exitosa; 509,15 kB iniciales, excedente de 9,15 kB sobre 500 kB |
+| GET facultades real, verificación anterior autorizada | HTTP 200, 30 UUID/nombres, sin duplicados; proxy Angular también verificado |
+| Etapa 8: suite backend y compilaciones | 79 backend y 53 frontend aprobadas; compilaciones exitosas |
+| Integración PostgreSQL 17.11 aislada | 7 aprobadas, 0 fallidas, 0 canceladas y 0 omitidas |
+| Cierre: suite backend existente | 79 aprobadas, 0 fallidas; no incluye la carpeta de integración |
+| Cierre: suite frontend existente | 53 aprobadas, 0 fallidas, en cinco archivos |
+| Cierre: build backend | Exitoso; prisma generate 7.10.1 y tsc, sin migraciones ni conexión a Neon |
+| Cierre: build Angular producción | Exitoso; 509,15 kB iniciales, advertencia de excedente de 9,15 kB |
+
+Comandos históricos relevantes (las verificaciones actuales mediante npm se detallan después):
 
 ```powershell
-npm.cmd run test --workspace backend
-npm.cmd run test --workspace frontend
-npm.cmd run build --workspace backend
-npm.cmd run build --workspace frontend
+# Desde la raíz, backend; pruebas con simulaciones y criptografía local
+node --import tsx --test backend/test/registration.validation.test.ts backend/test/registration.security.test.ts
+node --import tsx --test backend/test/registration.validation.test.ts backend/test/registration.security.test.ts backend/test/registration.service.test.ts
+node --import tsx --test backend/test/registration.validation.test.ts backend/test/registration.security.test.ts backend/test/registration.service.test.ts backend/test/registration.repository.test.ts
+node --import tsx --test backend/test/*.test.ts
+node node_modules/typescript/bin/tsc -p backend/tsconfig.json
+
+# Desde frontend
+npm.cmd test
+npm.cmd run build -- --configuration production
 ```
 
-Las pruebas backend usan servicios simulados y servidores HTTP locales de prueba. Las de Angular usan HttpTestingController; no consultan Neon. Las verificaciones restringidas por el sandbox se reintentaron fuera de él con autorización. La compilación backend generó el cliente Prisma local, sin aplicar migraciones.
+Los fallos iniciales por uv_os_get_passwd o acceso a directorios correspondieron al sandbox y se reintentaron fuera de él con autorización. Las suites generales no consultan Neon: HTTP backend local con servicios simulados, repositorio con cliente simulado y Angular con HttpTestingController. La suite real, separada y manual, usó exclusivamente el contenedor temporal autorizado.
 
-La integración real se verificó con los comandos de desarrollo existentes y solicitudes GET autorizadas. No se crearon cuentas ni sesiones. Se observó una advertencia del controlador PostgreSQL sobre la interpretación futura de modos SSL; no se cambió configuración.
+Los resultados reales de facultades son históricos, solo GET; la prueba de inserción de cuentas se realizó por separado en PostgreSQL temporal. Las pruebas de HU-03 no se ejecutaron ni se atribuyen a esta rama. Una observación histórica del controlador PostgreSQL sobre modos SSL no motivó cambios de configuración.
 
-Las pruebas del PR no se ejecutaron en esta sesión. Las declaraciones de su autor sobre resultados no se confunden con verificaciones propias. Permanecen pendientes pruebas de la combinación, registro real y una revisión visual completa.
 
-## 9. Trabajo posterior de registro y coordinación
+### Validación real de PostgreSQL y eliminación del entorno
 
-No forma parte de la integración inicial implementar POST /api/auth/register.
+La integración se ejecutó una sola vez tras revalidar ID, etiqueta, imagen, puerto y tmpfs del contenedor. Se eliminaron del entorno del proceso las variables DATABASE_URL y DATABASE_URL_UNPOOLED; TEST_DATABASE_URL apuntó exclusivamente a 127.0.0.1:55432, base ics_hu02_test y usuario hu02_test_admin, con credenciales solo en memoria y la habilitación explícita HU02_ALLOW_INTEGRATION_WRITES=1.
 
-Para esa etapa se propone validar entradas y facultad, normalizar correo, calcular Argon2id fuera de la transacción y crear usuario y sesión juntos. Emitir cookie y AuthResponse después del commit; mapear duplicado de correo a 409; no llamar a login nuevamente.
+| Caso real | Resultado |
+| --- | --- |
+| Registro y persistencia | HTTP 201; un usuario y una sesión vinculados, UUID y normalización correctos |
+| Hash y secretos | Argon2id verificable, contraseña original no persistida en texto plano y SHA-256 del token; JSON sin secretos |
+| Correo duplicado normalizado | HTTP 409, sin agregar cuenta ni sesión |
+| Universidad inexistente | HTTP 400, sin persistencia parcial |
+| Fallo al insertar sesión | HTTP 500 sin cookie, fallo inducido real y rollback del usuario; recuperación posterior exitosa |
+| Registros concurrentes | Un HTTP 201 y un HTTP 409; una cuenta y una sesión |
+| Cookie y duración | HttpOnly, Secure, SameSite=Lax, Path=/; Expires no posterior a la sesión; seis horas exactas entre created_at y expires_at |
 
-AccountsRepository necesitará una operación atómica de registro. La creación interna de sesión debería reutilizarse dentro de la transacción correspondiente, sin llamar después a createSession como una operación independiente. Coordinar qué ocurre con una sesión anterior del mismo navegador.
+Entorno: PostgreSQL 17.11, imagen oficial postgres:17 sobre Docker Linux 28.3.2, fijada al identificador sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe. Contenedor ics-hu02-pg-test, etiqueta purpose=hu02-integration, ID de27d614679558fdc461355c76e839bb04d8ca0f8c0b76a77c538b5337f0364c. Datos en /var/lib/postgresql/data mediante tmpfs, sin montajes persistentes ni carpetas del proyecto. Esquema original leído en memoria del objeto Git fijado; se preparó una facultad ficticia, sin copiar datos de Neon.
 
-Pruebas pendientes: registro correcto, correo normalizado duplicado y concurrencia, entradas inválidas, facultad inexistente, rollback si falla sesión, respuestas sin secretos, errores HTTP y navegación con estado autenticado. Las pruebas con escrituras requieren entorno y autorización específicos.
+Los casos fueron secuenciales salvo las solicitudes concurrentes dentro de su caso. Se aplicó una protección temporal en memoria para cancelar los pendientes ante un fallo; no hubo fallos ni repeticiones. No se detectaron problemas de SQL, Prisma o transacciones.
 
-### Coordinación de HU-02 con HU-03
+La comprobación previa de PowerShell tuvo inicialmente un falso positivo al tratar Binds nulo como un montaje; se detuvo antes de ejecutar SQL. Esa comprobación temporal fue corregida con autorización, sin modificar archivos. No fue una prueba de integración fallida.
 
-- Login conserva la página abierta; el registro debe navegar a la landing según HU-02. Son comportamientos diferentes que deben coexistir.
-- La landing y su ruta definitiva requieren acuerdo con su responsable.
+Después de finalizar, se verificó el contenedor y se ejecutó exclusivamente `docker stop ics-hu02-pg-test`. AutoRemove lo eliminó; su ausencia se comprobó por nombre e ID y los datos tmpfs desaparecieron. La imagen postgres:17 se conservó. El contenedor mongodb mantuvo ID, imagen, inicio, puerto y contador de reinicios. No hubo conexiones a Neon, migraciones de desarrollo ni incorporación de HU-03.
 
-## 10. Registro de cambios
+### Comprobación general de cierre
 
-### 2026-10-22 — Preservación inicial de HU-02
+Se ejecutaron los scripts existentes, con npm.cmd en PowerShell:
 
-- Estado: implementado; verificaciones funcionales históricas anteriores al commit.
-- Objetivo: preservar formulario, navegación y facultades sin publicar cambios.
-- Rama: feature/hu-02-registro.
-- Commit: `195f5f52a82059550e362db55565c72f5a2571ec`.
-- Archivos: los 12 nuevos y 7 modificados enumerados en la sección 3; ninguno eliminado.
-- Decisiones: rutas explícitas al preparar el commit; mantener registro bloqueado; no incorporar HU-03 todavía.
-- Verificación: revisión del diff preparado, estado, commit y permanencia de main en su base anterior. Directorio limpio al finalizar. No se repitieron pruebas ni compilaciones en la operación de commit.
-- Problemas: el sandbox bloqueó escrituras en Git; reintentos autorizados. Avisos de futura conversión LF→CRLF, sin cambios de configuración.
-- Dependencias: arquitectura y archivos originales del PR #1.
-- Pendiente: documentación inicial e integración por grupos; sin push ni PR de HU-02.
+```powershell
+# Desde backend
+npm.cmd test
+npm.cmd run build
 
-### 2026-10-22 — Documentación técnica inicial
+# Desde frontend
+npm.cmd test
+npm.cmd run build -- --configuration production
+```
 
-- Estado: documento creado, sin add ni commit.
-- Historia: HU-02 e integración con HU-03.
-- Objetivo: registrar alcance local, procedencia del PR, contratos, conflictos y plan.
-- Archivo creado: `docs/integracion-hu02-hu03.md`.
-- Archivos de código modificados o eliminados: ninguno.
-- Verificación: lecturas locales y comandos Git de consulta para confirmar rama, commit, inventario y ausencia previa de este archivo. No se ejecutan pruebas ni compilaciones.
-- Decisiones: separar implementado, verificado históricamente y propuesto; no incluir credenciales ni conexiones privadas.
-- Dependencias: confirmación del compañero sobre responsabilidades, landing, contrato y archivos referenciados ausentes.
-- Pendiente: revisión del documento, autorización de su commit y del primer grupo de integración.
+El script backend `tsx --test test/*.test.ts` no incluye `test/integration/registration.integration.test.ts`. Los siete casos reales no se volvieron a ejecutar; el contenedor ya no existe. El build backend genera el cliente Prisma y compila localmente; no aplica migraciones.
+
+Resultados actuales: 79 pruebas backend y 53 frontend aprobadas, cero fallidas; ambas compilaciones exitosas. Los primeros intentos de pruebas/Angular bloqueados por el sandbox se reintentaron fuera de él con autorización. Persiste la advertencia de presupuesto Angular: 509,15 kB frente a 500 kB. Los avisos Git LF/CRLF no cambiaron configuración ni prepararon archivos en staging.
+
+Esta actualización conserva contratos y decisiones de integración. Solo se editó este documento; los scripts generaron los artefactos locales esperados de compilación. No se modificó código fuente, pruebas, dependencias ni configuración.
+
+## 9. Registro de cambios por etapa
+
+El registro conserva las etapas iniciales del 2026-10-22 y el cierre actualizado el 2026-10-23, sin atribuir nuevos commits a archivos no confirmados.
+
+### Preservación y documentación inicial
+
+- Historia/objetivo: HU-02, conservar formulario, ruta y facultades.
+- Archivos: 12 nuevos y 7 modificados de las secciones 3.1/3.2; luego este documento.
+- Commits: 195f5f52a82059550e362db55565c72f5a2571ec y 3a6fab578f53ffa261ff62f8364385da1929a1c8.
+- Decisiones: rama propia, sin publicación; alcance corregido a HU-02.
+- Verificación: diff, estado y referencias; pruebas históricas 15/26 y luego 4 backend/35 frontend.
+- Problemas: restricciones del sandbox y avisos LF/CRLF; sin alterar configuración.
+- Dependencias/pendiente: coordinación futura con compañero y registro real entonces pendiente.
+- Eliminaciones: ninguna.
+
+### Etapa 1 — Análisis y estrategia propia
+
+- Historia/objetivo: completar HU-02 sin incorporar HU-03.
+- Archivos creados/modificados/eliminados: ninguno en la etapa de análisis.
+- Decisiones: destino temporal /; sesión automática de seis horas, sin restauración; seguridad compatible; sin escritura en Neon.
+- Verificación: lectura del código/documentación; no valida persistencia.
+- Dependencias: tablas existentes y contratos de HU-03; no se exige merge para desarrollar.
+- Pendiente de esa etapa: módulos de validación, servicio, repositorio y adaptadores.
+
+### Etapa 2 — Validación y seguridad
+
+- Creados: backend/src/modules/accounts/registration.validation.ts y registration.security.ts; backend/test/registration.validation.test.ts y registration.security.test.ts.
+- Modificados/eliminados: ninguno.
+- Decisiones: normalización de correo, contraseña hasta 1024 bytes, Argon2id, token aleatorio y SHA-256.
+- Pruebas: 21 aprobadas; sin servicios externos.
+- Problemas/dependencias: límites y parámetros probados localmente; no depende de Prisma.
+- Pendiente de esa etapa: orquestación y persistencia.
+
+### Etapa 3 — Servicio de registro
+
+- Creados: backend/src/modules/accounts/registration.service.ts y backend/test/registration.service.test.ts.
+- Modificados/eliminados: ninguno.
+- Decisiones: interfaz createUserAndSession, una operación atómica, errores tipados y resultado separado para JSON/cookie.
+- Pruebas: 37 acumuladas aprobadas, repositorio simulado.
+- Problemas/dependencias: fechas y errores dependen del contrato del repositorio; sin garantía de PostgreSQL por mocks.
+- Pendiente de esa etapa: adaptador real y HTTP.
+
+### Etapa 4 — Repositorio transaccional
+
+- Creados: backend/src/modules/accounts/registration.repository.ts y backend/test/registration.repository.test.ts.
+- Modificados/eliminados: ninguno.
+- Decisiones: cliente inyectado, SQL seguro, universidad dentro de transacción, UUID explícitos, reloj común y traducción específica de users_email_key.
+- Pruebas: 13 nuevas; 50 acumuladas aprobadas.
+- Problemas/dependencias: sandbox impidió iniciar tsx; reintento autorizado. Requiere estructura compatible en PostgreSQL.
+- Pendiente: rollback, concurrencia y errores del motor reales en base aislada.
+
+### Etapa 5 — Endpoint HTTP
+
+- Creados: backend/src/modules/accounts/registration.controller.ts y backend/test/registration.test.ts.
+- Modificados: backend/src/app.ts, backend/src/server.ts, backend/test/app.test.ts y backend/test/universities.test.ts.
+- Eliminados: ninguno.
+- Decisiones: POST público con encabezado propio, JSON de 16 KiB, cookie HttpOnly y adaptación de errores; composición sin iniciar servidor en pruebas.
+- Pruebas: 19 nuevas; 73 backend aprobadas. Compilación TypeScript exitosa.
+- Problemas/dependencias: reintento de pruebas por sandbox; cookie y esquema compartidos con futura integración.
+- Pendiente: conexión Angular y verificación real aislada.
+
+### Etapa 6 — Conexión Angular
+
+- Creados: frontend/src/app/features/auth/register/registration.service.ts, registration.service.spec.ts y registration.types.ts.
+- Modificados: frontend/src/app/features/auth/register/register-page.ts, register-page.html y register-page.spec.ts.
+- Eliminados: ninguno. No se modificaron Register ni backend en esta etapa.
+- Decisiones: ruta relativa, cinco propiedades explícitas, sin Storage, bloqueo de duplicados, errores por campo y cancelación; navegar solo tras éxito.
+- Pruebas: primera ejecución 51 aprobadas/2 fallidas por expectativas anteriores de App; las 46 de los otros cuatro archivos pasaron. Compilación de producción exitosa.
+- Problemas: presupuesto inicial 509,15 kB; aviso de licencia PrimeUI observado durante esa ejecución.
+- Dependencias/pendiente: endpoint propio, proxy conservado y autorización para actualizar App.
+
+### Corrección puntual de pruebas de App
+
+- Modificado únicamente: frontend/src/app/app.spec.ts.
+- Creados/eliminados: ninguno.
+- Decisiones: sustituir expectativas de vista previa/bloqueo permanente por presentación actual y envío válido; conservar navegación, invalidez y HTTP simulado.
+- Pruebas: npm.cmd test desde frontend, 53 aprobadas y 0 fallidas.
+- Problemas: primer intento limitado por sandbox; reintento exitoso, sin problemas nuevos.
+- Dependencias/pendiente: ninguna modificación de producción; falta persistencia real aislada.
+
+### Etapa 7 — Revisión funcional y documentación
+
+- Modificado únicamente: docs/integracion-hu02-hu03.md.
+- Creados/eliminados: ninguno.
+- Objetivo: registrar estado real, trazabilidad de implementación y límites de verificación.
+- Verificación: lectura del flujo, requisitos, pruebas y migración histórica disponible en Git; consultas Git de solo lectura.
+- Decisiones: retirar como vigente el plan previo de incorporar HU-03; preservar referencias históricas y separar las validaciones simuladas de las reales.
+- Problemas: desfase potencial de cookie respecto de expires_at, landing temporal, persistencia/atomicidad/concurrencia sin probar. No se corrigió código.
+- Dependencias: coordinación futura de contratos con el compañero; ninguna escritura ni integración autorizada por esta etapa.
+- Pendiente: revisión del documento y decisiones del usuario sobre observaciones y pruebas en entorno aislado.
+- No se repitieron suites ni compilaciones en esta etapa.
+
+
+### Etapa 8 — Corrección de vencimiento y verificación general
+
+- Modificados con autorización: backend/src/modules/accounts/registration.controller.ts y backend/test/registration.test.ts.
+- Creados/eliminados: ninguno.
+- Decisión: Expires absoluto redondeado hacia abajo; sin Max-Age; 503 sin cookie para vencimiento/fecha inválida.
+- Pruebas: seis nuevas, 79 backend y 53 frontend aprobadas; compilaciones exitosas.
+- Problemas: restricciones de sandbox reintentadas; advertencia Angular de 9,15 kB.
+- Pendiente de esa etapa: comprobar persistencia y transacciones en entorno aislado, resuelto posteriormente.
+
+### Preparación, integración aislada y limpieza
+
+- Creados: backend/test/integration/postgres-fixture.ts y backend/test/integration/registration.integration.test.ts. No se modificó producción para estas pruebas.
+- Objetivo: verificar los siete escenarios reales sin afectar la base compartida.
+- Decisiones: destino local estricto sin fallback, conexión independiente, base vacía, bloqueo exclusivo, credenciales en memoria; consulta del SQL original sin merge.
+- Pruebas: siete aprobadas y cero fallidas; resultados individuales en la sección 8.
+- Problemas: Docker Desktop inicialmente detenido; se inició con autorización. Falso positivo de Binds corregido antes de SQL. La ejecución real no detectó errores SQL/Prisma/transaccionales.
+- Recursos: contenedor efímero PostgreSQL 17.11 creado, probado y eliminado con autorización; datos tmpfs destruidos, imagen conservada y mongodb intacto.
+- Dependencias: ninguna integración de HU-03; conserva referencia histórica del SQL.
+- Pendiente: navegador real, landing definitiva y futura coordinación de arquitectura, sin ampliar alcance a HU-04/HU-06.
+
+### 2026-10-23 — Cierre documental y verificación general posterior
+
+- Modificado únicamente: docs/integracion-hu02-hu03.md.
+- Creados/eliminados en el proyecto: ninguno.
+- Objetivo: registrar la integración aprobada y su limpieza, preservando decisiones y contratos.
+- Verificaciones: npm.cmd test y npm.cmd run build en backend; npm.cmd test y build de producción en frontend.
+- Resultado: 79 backend y 53 frontend aprobadas, ambas compilaciones exitosas; integración real no repetida.
+- Revisión: git status, git diff --check, git diff --stat y listado de archivos sin seguimiento, sin staging ni commits.
+- Problemas: advertencia Angular y avisos LF/CRLF; no se corrigió código.
+- Pendiente: revisión del usuario y autorización para preparar el commit local.
 
 ### Plantilla para próximas etapas
 
 ```markdown
 ### AAAA-MM-DD — Etapa N: nombre
 
-- Historia de usuario:
-- Estado: propuesta / implementada / verificada.
-- Objetivo:
-- Referencia de origen y commit:
-- Archivos creados: ruta y función.
-- Archivos modificados: ruta y cambio concreto.
-- Archivos eliminados: ruta, sustitución y autorización.
-- Decisiones técnicas y justificación:
-- Conflictos y resolución aplicada:
-- Pruebas o comandos ejecutados y resultados:
-- Problemas encontrados y causa confirmada o probable:
-- Dependencias con otros integrantes; responsables solo cuando estén confirmados:
-- Cambios pendientes:
+- Historia y objetivo:
+- Estado: propuesta / implementada / verificada; alcance de la verificación:
+- Archivos creados, modificados y eliminados, con ruta y motivo:
+- Referencias de commits:
+- Decisiones técnicas:
+- Pruebas/comandos y resultados:
+- Problemas y solución aplicada o propuesta:
+- Dependencias con otros integrantes:
+- Cambios pendientes y autorizaciones necesarias:
 ```
 
-Actualizar este registro en cada etapa implementada. No marcar una etapa como verificada por copiar archivos o por reutilizar resultados anteriores. Conservar las referencias de commits y diferenciar cambios propios de código incorporado del compañero.
+Actualizar este registro con autorización en cada etapa. No atribuir al código local cambios que solo existan en un PR, ni convertir una prueba simulada en evidencia de persistencia real.

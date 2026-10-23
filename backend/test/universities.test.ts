@@ -15,6 +15,7 @@ test('GET /api/universities es público y conserva UUID, nombres y orden del rep
     checkDatabase: async () => { throw new Error('No debe comprobar disponibilidad global.'); },
     checkStorage: async () => { throw new Error('Este endpoint no depende del almacenamiento.'); },
     listUniversities: async () => { calls += 1; return universities; },
+    registrationService: { register: async () => { throw new Error('No debe registrar.'); } },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
@@ -32,6 +33,7 @@ test('GET /api/universities devuelve 200 cuando la lista está vacía', async (t
     checkDatabase: async () => {},
     checkStorage: async () => {},
     listUniversities: async () => [],
+    registrationService: { register: async () => { throw new Error('No debe registrar.'); } },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
@@ -48,6 +50,7 @@ test('GET /api/universities devuelve 503 sin revelar errores internos', async (t
     checkDatabase: async () => {},
     checkStorage: async () => {},
     listUniversities: async () => { throw new Error('detalle-interno-de-prueba'); },
+    registrationService: { register: async () => { throw new Error('No debe registrar.'); } },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());

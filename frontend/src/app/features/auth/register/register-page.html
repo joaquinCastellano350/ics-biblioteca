@@ -3,18 +3,15 @@
     <a routerLink="/">← Volver al inicio</a>
   </nav>
 
-  <aside class="preview-notice" aria-labelledby="register-preview-title">
-    <h2 id="register-preview-title">Vista previa del formulario</h2>
-    <p>El registro de cuentas todavía no está habilitado. Las facultades se consultan desde
-      el servidor, pero no se enviarán tus datos de registro ni se creará una cuenta.</p>
-  </aside>
-
-  <!-- La consulta de facultades no habilita la creación de cuentas. -->
   <app-register
     [universities]="universities()"
     [universitiesLoading]="universitiesLoading()"
     [universitiesError]="universitiesError()"
-    [submitDisabled]="true" />
+    [loading]="submitting()"
+    [submitDisabled]="registered()"
+    [errorMessage]="registrationError()"
+    [fieldErrors]="registrationFieldErrors()"
+    (registerRequested)="register($event)" />
 
   @if (!universitiesLoading() && (universitiesError() || universities().length === 0)) {
     <div class="retry-actions">

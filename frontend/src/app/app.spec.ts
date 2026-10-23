@@ -1,11 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { By } from '@angular/platform-browser';
 import { NavigationEnd, provideRouter, Router } from '@angular/router';
 import { providePrimeNG } from 'primeng/config';
 import { filter, firstValueFrom } from 'rxjs';
 import { App } from './app';
 import { routes } from './app.routes';
+import { Register } from './features/auth/register/register';
 
 describe('App', () => {
   let fixture: ComponentFixture<App>;
@@ -71,15 +73,56 @@ describe('App', () => {
     expect(router.url).toBe('/registro');
     expect(fixture.nativeElement.querySelector('app-register-page')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('app-register')).not.toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Vista previa del formulario');
+    expect(fixture.nativeElement.querySelector('app-register h1')?.textContent).toContain('Creá tu cuenta');
+    expect(fixture.nativeElement.textContent).not.toContain('Vista previa del formulario');
     expect(fixture.nativeElement.textContent).not.toContain('Hello, biblioteca');
   });
 
-  it('permite abrir /registro directamente y mantiene bloqueado el envío', async () => {
+  it('permite abrir /registro directamente y enviar datos válidos con facultades disponibles', async () => {
     await navigate('/registro');
     expect(fixture.nativeElement.querySelector('app-register-page')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('button[type="submit"]').disabled).toBe(true);
     expect(fixture.nativeElement.textContent).not.toContain('Congratulations!');
+    const register: Register = fixture.debugElement.query(By.directive(Register)).componentInstance;
+    expect(register.universities()).toEqual([
+      { id: '00000000-0000-4000-8000-000000000007', name: 'Facultad Regional Córdoba (Córdoba)' },
+    ]);
+    expect(register.submitDisabled()).toBe(false);
+    register.submit();
+    http.expectNone('/api/auth/register');
+
+    const data = {
+      firstName: 'Ana', lastName: 'Pérez', email: 'ana@example.org', password: 'a',
+      universityId: register.universities()[0].id,
+    };
+    register.form.setValue(data);
+    expect(register.form.valid).toBe(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('button[type="submit"]').disabled).toBe(false);
+    fixture.nativeElement.querySelector('form').dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+    const request = http.expectOne('/api/auth/register');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('X-Biblioteca-Request')).toBe('1');
+    expect(request.request.body).toEqual(data);
+    expect(router.url).toBe('/registro');
+    expect(fixture.nativeElement.querySelector('button[type="submit"]').disabled).toBe(true);
+
+    const navigation = firstValueFrom(router.events.pipe(filter((event) => event instanceof NavigationEnd)));
+    request.flush({
+      user: {
+        id: '00000000-0000-4000-8000-000000000001', firstName: data.firstName,
+        lastName: data.lastName, email: data.email, university: register.universities()[0],
+      },
+      session: { createdAt: '2026-10-22T12:00:00.000Z', expiresAt: '2026-10-22T18:00:00.000Z' },
+      serverTime: '2026-10-22T12:00:00.000Z',
+    }, { status: 201, statusText: 'Created' });
+    await navigation;
+    await settleNavigation();
+    expect(router.url).toBe('/');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Hello, biblioteca');
+    expect(fixture.nativeElement.querySelector('app-register')).toBeNull();
   });
 
   it('restaura la bienvenida al usar Volver al inicio', async () => {

@@ -1,10 +1,14 @@
 import express from 'express';
+import { createRegistrationRouter } from './modules/accounts/registration.controller.js';
+import type { RegistrationHandlerService } from './modules/accounts/registration.controller.js';
 import type { University } from './modules/accounts/universities.repository.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
   checkStorage: () => Promise<void>;
   listUniversities: () => Promise<University[]>;
+  registrationService: RegistrationHandlerService;
+  production?: boolean;
 }
 
 export function createApp(services: AppServices) {
@@ -41,6 +45,8 @@ export function createApp(services: AppServices) {
       });
     }
   });
+
+  app.use('/api/auth/register', createRegistrationRouter(services.registrationService, services.production));
 
   app.use((_request, response) => {
     response.status(404).json({ error: 'NOT_FOUND' });
