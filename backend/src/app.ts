@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { BookRepositoryInterface } from './book/book-repository-interface.js';
 import { BookController } from './book/book-controller.js';
 import { bookRoutes } from './book/book-routes.js';
+import { authorRoutes } from './book/author-routes.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -16,7 +17,9 @@ export function createApp(services: AppServices) {
   app.disable('x-powered-by');
 
   if (services.books) {
-    app.use('/api/books', bookRoutes(new BookController(services.books)));
+    const controller = new BookController(services.books);
+    app.use('/api/books', bookRoutes(controller));
+    app.use('/api/authors', authorRoutes(controller));
   }
 
   app.get('/api/health', (_request, response) => {

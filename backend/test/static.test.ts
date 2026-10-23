@@ -15,7 +15,7 @@ test('Express sirve Angular en el origen de la API y conserva los 404 de API com
     checkDatabase: async () => {},
     checkStorage: async () => {},
     frontendDirectory: directory,
-    books: { findAll: async () => [] },
+    books: { findAll: async () => [], findAuthors: async () => [] },
   }).listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

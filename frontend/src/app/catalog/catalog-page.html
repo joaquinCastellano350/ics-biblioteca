@@ -9,6 +9,74 @@
       <span aria-hidden="true">↗</span> No necesitás una cuenta para explorar
     </p>
   </header>
+  <section class="filter-wrap" aria-label="Filtros del catálogo">
+    <div class="filter-control">
+      <button
+        #authorToggle
+        class="filter-button"
+        [class.selected]="selectedAuthors().length > 0"
+        type="button"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="authorMenuOpen()"
+        aria-controls="author-filter-menu"
+        (click)="toggleAuthorMenu()"
+      >
+        Autores <span class="filter-count">{{ selectedAuthors().length }}</span>
+      </button>
+      @if (authorMenuOpen()) {
+        <div
+          id="author-filter-menu"
+          class="filter-menu"
+          role="dialog"
+          aria-label="Filtrar por autor"
+        >
+          <label class="filter-search-label" for="catalog-author-search">Buscar autores</label>
+          <input
+            #authorSearchInput
+            id="catalog-author-search"
+            class="filter-search"
+            type="search"
+            [value]="authorQuery()"
+            (input)="searchAuthors($any($event.target).value)"
+            placeholder="Buscar autores…"
+            autocomplete="off"
+          />
+          <div class="filter-options" role="group" aria-label="Autores disponibles">
+            @for (author of authorSuggestions(); track author.id) {
+              <label class="filter-option">
+                <input
+                  type="checkbox"
+                  [checked]="isDraftAuthorSelected(author.id)"
+                  (change)="toggleDraftAuthor(author, $any($event.target).checked)"
+                />
+                <span>{{ author.name }}</span>
+              </label>
+            } @empty {
+              <p class="filter-empty">No se encontraron autores</p>
+            }
+          </div>
+          <footer class="filter-footer">
+            <button class="filter-clear" type="button" (click)="clearDraftAuthors()">Limpiar</button>
+            <button class="filter-done" type="button" (click)="applyAuthorMenu()">Listo</button>
+          </footer>
+        </div>
+      }
+    </div>
+    @if (selectedAuthors().length) {
+      <div class="selected-filters" aria-label="Filtros seleccionados">
+        @for (author of selectedAuthors(); track author.id) {
+          <button
+            class="chip"
+            type="button"
+            [attr.aria-label]="'Quitar filtro de autor ' + author.name"
+            (click)="removeSelectedAuthor(author.id)"
+          >
+            {{ author.name }} <span aria-hidden="true">×</span>
+          </button>
+        }
+      </div>
+    }
+  </section>
   <section aria-label="Libros del catálogo" [attr.aria-busy]="status() === 'loading'">
     @switch (status()) {
       @case ('loading') {
@@ -46,9 +114,13 @@
           </div>
         } @else {
           <div class="state-panel">
-            <span class="state-symbol" aria-hidden="true">↗</span>
-            <h2>La biblioteca está preparando sus estantes</h2>
-            <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
+            @if (selectedAuthors().length) {
+              <h2>Sin resultados</h2>
+            } @else {
+              <span class="state-symbol" aria-hidden="true">↗</span>
+              <h2>La biblioteca está preparando sus estantes</h2>
+              <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
+            }
           </div>
         }
       }
