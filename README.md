@@ -20,7 +20,7 @@ ICS-Biblioteca/
 └── package-lock.json  # Resolución de dependencias de todo el repositorio
 ```
 
-Cada aplicación mantiene sus dependencias en su propio `package.json`. La instalación se administra desde la raíz, con un único `package-lock.json`. Las aplicaciones pueden compilarse y desplegarse por separado.
+Cada aplicación mantiene sus dependencias en su propio `package.json`. La instalación se administra desde la raíz, con un único `package-lock.json`. Se compilan por workspace y se publican juntas: Express sirve la API y los archivos compilados de Angular, según el ADR vigente.
 
 ## Preparación
 
@@ -82,6 +82,18 @@ neon deploy
 Las credenciales de PostgreSQL y del bucket permanecen en el backend. [`.env.example`](.env.example) documenta los nombres sin valores reales. Esta puesta en marcha comprueba conectividad sin crear tablas de dominio; las migraciones corresponden a las historias siguientes.
 
 Las reglas de cupos, préstamos, reservas y vencimientos pertenecen al backend. La integración con el frontend se realizará mediante un contrato de API explícito.
+
+## Catálogo público
+
+SCRUM-13 implementa `/catalogo` con PrimeNG y `GET /api/books` con Express y
+Prisma. El módulo `backend/src/book/` separa entidad, interfaz de repositorio,
+acceso a datos, controlador y rutas. Se conserva la conexión compartida a Neon.
+El [contrato del catálogo](docs/catalogo-api.md) detalla las tablas, la respuesta
+pública y los límites con las otras historias.
+
+La migración del catálogo está preparada en `backend/prisma/migrations/` y no
+contiene libros iniciales. Revisarla antes de aplicarla a la rama de Neon
+correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
 
 ## Documentación
 
