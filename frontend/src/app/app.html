@@ -1,1 +1,41 @@
-<router-outlet />
+<a class="skip-link" href="#main-content">Saltar al contenido</a>
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" routerLink="/" aria-label="Biblioteca Digital Universitaria, inicio">
+      <span class="brand-mark" aria-hidden="true"
+        ><svg viewBox="0 0 24 24">
+          <path d="M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Zm0 0v15" /></svg
+      ></span>
+      <span>Biblioteca Digital<small>Universitaria</small></span>
+    </a>
+    <nav class="main-nav" aria-label="Navegación principal">
+      <a
+        routerLink="/"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        ariaCurrentWhenActive="page"
+        >Inicio</a
+      >
+      <a routerLink="/catalogo" routerLinkActive="active" ariaCurrentWhenActive="page">Catálogo</a>
+      <button pButton variant="text" disabled type="button">Mis préstamos</button>
+    </nav>
+    <div class="account-actions">
+      <button pButton variant="text" disabled type="button">Ingresar</button>
+      <button pButton disabled type="button">Crear cuenta</button>
+    </div>
+  </div>
+</header>
+<div class="route-content"><router-outlet /></div>
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <p class="footer-brand">Biblioteca Digital Universitaria</p>
+      <p>Un espacio para aprender, en cualquier lugar.</p>
+    </div>
+    <p class="footer-note">
+      Bibliografía que te acompaña.<br /><span
+        >Catálogo público · Lectura con préstamo vigente</span
+      >
+    </p>
+  </div>
+</footer>
