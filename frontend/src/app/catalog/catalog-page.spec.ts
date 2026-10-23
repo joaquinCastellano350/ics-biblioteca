@@ -11,6 +11,26 @@ describe('Public catalog', () => {
     });
   });
 
+  it('sends title changes to the API and clears the title criterion', async () => {
+    const fixture = TestBed.createComponent(CatalogPage);
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/books').flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
+    input.value = 'ciencia';
+    input.dispatchEvent(new Event('input'));
+    http.expectOne('/api/books?title=ciencia').flush({ books: [] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Sin resultados');
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+    http.expectOne('/api/books').flush({ books: [] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Sin resultados');
+    expect(fixture.componentInstance.status()).toBe('ready');
+  });
+
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
   it('requests all books without authentication and renders every book with multiple terms', async () => {
