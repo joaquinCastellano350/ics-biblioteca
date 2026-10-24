@@ -1,7 +1,11 @@
-# Catálogo público — SCRUM-13
+﻿# Catálogo público — SCRUM-13
 
-`GET /api/books` es público y devuelve todos los libros sin exigir sesión.
-No implementa búsqueda, filtros, disponibilidad ni acciones de circulación.
+`GET /api/books` es público y devuelve el catálogo sin exigir sesión. Acepta el
+parámetro opcional `title`, que busca coincidencias parciales sin distinguir
+mayúsculas ni tildes. PostgreSQL compara el título directamente; la consulta no
+depende de `title_search`, ya que hoy no existe un flujo de escritura de libros
+que garantice su normalización. Un parámetro vacío equivale a no aplicar el
+filtro. El contrato de respuesta no cambia.
 
 ```json
 {
@@ -25,16 +29,16 @@ desbordarse, pero conservan los metadatos completos recibidos. No abren detalle.
 | Archivo en `backend/src/book/` | Responsabilidad |
 | --- | --- |
 | `book.ts` | Entidad `Book` con campos persistidos y proyección pública `CatalogBook`. |
-| `book-repository-interface.ts` | Contrato de lectura independiente del ORM. |
-| `book-repository.ts` | Consulta Prisma, selección de campos y relaciones ordenadas. |
+| `book-repository-interface.ts` | Criterios opcionales extensibles, independientes del ORM. |
+| `book-repository.ts` | Filtro de título en PostgreSQL y consulta Prisma de relaciones ordenadas. |
 | `book-controller.ts` | Preparación y lista explícita de campos de la respuesta pública. |
 | `book-routes.ts` | Adaptación HTTP y error recuperable sin detalles de proveedores. |
 
 El repositorio recibe el PrismaClient compartido de `database.ts`; no abre un
-pool adicional ni usa SQL manual para consultar libros. La entidad contiene
-`titleSearch`, `pdfObjectKey`, `totalCopies` y `createdAt`, con el mapeo a los
-nombres SQL del modelo. La proyección pública excluye esos campos internos.
-`select` evita traer la clave del PDF desde la base para esta consulta.
+pool adicional. La búsqueda selecciona IDs mediante SQL parametrizado para
+normalizar y comparar títulos, luego usa Prisma para cargar la misma proyección
+pública y sus relaciones. Los criterios se representan como objeto para permitir
+combinar filtros futuros.
 
 Una falla devuelve `503` con `error.code = CATALOG_UNAVAILABLE`; el frontend
 ofrece reintentar. No sustituye un fallo por una colección vacía o datos de

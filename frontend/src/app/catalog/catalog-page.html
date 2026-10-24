@@ -5,18 +5,22 @@
       <h1>Catálogo de libros</h1>
       <p class="intro">Bibliografía para seguir construyendo tu formación.</p>
     </div>
-    <p class="public-note">
-      <span aria-hidden="true">↗</span> No necesitás una cuenta para explorar
-    </p>
+    <p class="public-note"><span aria-hidden="true">↗</span> No necesitás una cuenta para explorar</p>
   </header>
+  <section class="search-field" aria-label="Buscar libros por título">
+    <label class="visually-hidden" for="catalog-title-search">Buscar por título</label>
+    <span class="search-input">
+      <i class="pi pi-search" aria-hidden="true"></i>
+      <input id="catalog-title-search" pInputText type="search" autocomplete="off"
+        placeholder="Buscar por título del libro…" [value]="titleQuery()"
+        (input)="searchByTitle($any($event.target).value)" />
+    </span>
+  </section>
   <section aria-label="Libros del catálogo" [attr.aria-busy]="status() === 'loading'">
     @switch (status()) {
       @case ('loading') {
         <div class="state-panel" role="status">
-          <p-progress-spinner
-            ariaLabel="Cargando catálogo"
-            [style]="{ width: '32px', height: '32px' }"
-          />
+          <p-progress-spinner ariaLabel="Cargando catálogo" [style]="{ width: '32px', height: '32px' }" />
           <p>Cargando el catálogo…</p>
         </div>
       }
@@ -25,30 +29,27 @@
           <span class="state-symbol" aria-hidden="true">!</span>
           <h2>No pudimos cargar el catálogo</h2>
           <p>Intentá nuevamente en unos instantes.</p>
-          <button pButton type="button" (click)="load()">
-            Volver a intentar <span aria-hidden="true">↗</span>
-          </button>
+          <button pButton type="button" (click)="load()">Volver a intentar <span aria-hidden="true">↗</span></button>
         </div>
       }
       @case ('ready') {
         <div class="catalog-meta" role="status">
-          <p>
-            <strong>{{ books().length }}</strong>
-            {{ books().length === 1 ? 'libro en el catálogo' : 'libros en el catálogo' }}
-          </p>
+          <p><strong>{{ books().length }}</strong> {{ books().length === 1 ? 'libro en el catálogo' : 'libros en el catálogo' }}</p>
           <span>Exploración pública</span>
         </div>
         @if (books().length) {
           <div class="book-grid">
-            @for (book of books(); track book.id) {
-              <app-book-card [book]="book" />
-            }
+            @for (book of books(); track book.id) { <app-book-card [book]="book" /> }
           </div>
         } @else {
-          <div class="state-panel">
+          <div class="state-panel" role="status">
             <span class="state-symbol" aria-hidden="true">↗</span>
-            <h2>La biblioteca está preparando sus estantes</h2>
-            <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
+            @if (titleQuery().trim()) {
+              <span>Sin resultados</span>
+            } @else {
+              <h2>La biblioteca está preparando sus estantes</h2>
+              <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
+            }
           </div>
         }
       }

@@ -3,10 +3,11 @@ import { BookController } from './book-controller.js';
 
 export function bookRoutes(controller: BookController) {
   const router = Router();
-  router.get('/', async (_request, response) => {
+  router.get('/', async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     try {
-      response.json(await controller.findAll());
+      const title = typeof request.query['title'] === 'string' ? request.query['title'] : undefined;
+      response.json(await controller.findAll({ ...(title === undefined ? {} : { title }) }));
     } catch {
       // No exponer mensajes de Prisma, SQL o credenciales de Neon.
       response.status(503).json({

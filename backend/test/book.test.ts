@@ -45,7 +45,8 @@ test('el catálogo público conserva todos los libros y metadatos y oculta datos
       subjects: [{ id: 's3', name: 'Algoritmos' }],
     },
   ];
-  await withCatalog({ findAll: async () => books }, async (url) => {
+  let receivedCriteria: unknown;
+  await withCatalog({ findAll: async (criteria) => { receivedCriteria = criteria; return books; } }, async (url) => {
     const response = await fetch(`${url}/api/books`);
     assert.equal(response.status, 200);
     const result = await response.json();
@@ -54,6 +55,9 @@ test('el catálogo público conserva todos los libros y metadatos y oculta datos
     assert.equal(result.books[0].subjects.length, 2);
     assert.ok(!JSON.stringify(result).includes('private.pdf'));
     assert.deepEqual(Object.keys(result.books[0]), ['id', 'title', 'authors', 'subjects']);
+    const filtered = await fetch(`${url}/api/books?title=red%20parcial`);
+    assert.equal(filtered.status, 200);
+    assert.deepEqual(receivedCriteria, { title: 'red parcial' });
   });
 });
 
