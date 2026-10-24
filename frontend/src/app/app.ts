@@ -1,11 +1,17 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { ButtonDirective } from 'primeng/button';
+import { AuthService } from './auth/auth.service';
+import { LoginDialog } from './auth/login-dialog';
+import { ButtonModule } from 'primeng/button';
+import { MessageModule } from 'primeng/message';
 
 @Component({
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, ButtonDirective],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, LoginDialog, ButtonModule, MessageModule],
   selector: 'app-root',
   styleUrl: './app.css',
   templateUrl: './app.html',
 })
-export class App {}
+export class App {
+  protected readonly auth = inject(AuthService);
+  constructor() { this.auth.restore(); }
+}

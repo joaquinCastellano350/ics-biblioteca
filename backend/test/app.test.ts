@@ -13,6 +13,8 @@ test('readiness ejecuta la comprobación de base y oculta errores de conexión',
       if (failure) throw new Error('credencial-secreta-de-prueba');
     },
     checkStorage: async () => {},
+    listUniversities: async () => [],
+    registrationService: { register: async () => { throw new Error('No debe registrar.'); } },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());

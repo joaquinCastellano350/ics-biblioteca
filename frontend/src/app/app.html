@@ -25,7 +25,13 @@
     </div>
   </div>
 </header>
+@if (auth.status() === 'unavailable') {
+  <p-message severity="error">No pudimos comprobar tu sesión.
+    <p-button label="Reintentar sesión" variant="text" (onClick)="auth.restore()" [disabled]="auth.authenticating()" />
+  </p-message>
+}
 <div class="route-content"><router-outlet /></div>
+<app-login-dialog />
 <footer class="site-footer">
   <div class="wrap footer-inner">
     <div>

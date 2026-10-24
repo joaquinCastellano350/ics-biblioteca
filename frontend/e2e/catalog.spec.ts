@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/auth/session', route => route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED' } } }));
+});
+
 export const books = [
   {
     id: 'test-book',

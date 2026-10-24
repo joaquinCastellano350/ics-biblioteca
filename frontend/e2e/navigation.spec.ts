@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('landing y navegación pública sin placeholders', async ({ page }, testInfo) => {
   await page.route('**/api/books', (route) => route.fulfill({ json: { books: [] } }));
+  await page.route('**/api/auth/session', route => route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED' } } }));
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('El conocimiento');
   await page.screenshot({ path: testInfo.outputPath('landing-public.png'), fullPage: true });
