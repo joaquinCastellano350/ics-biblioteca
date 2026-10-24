@@ -22,7 +22,7 @@ test('la vigencia de la sesión tiene límite exclusivo y respeta revocación', 
 });
 
 test('HTTP rechaza escrituras sin protección, cuerpos inválidos y oculta fallos de base', async (t) => {
-  const fail = async (): Promise<never> => { throw new Error('credencial-privada-no-exponer'); };
+  const fail = async (): Promise<never> => { throw Object.assign(new Error('credencial-privada-no-exponer'), { code: 'P1001' }); };
   const accounts = new AccountsService({
     findUser: fail, findSession: fail, createSession: fail, listUniversities: fail,
   });
@@ -102,7 +102,7 @@ test('login y consulta conservan la respuesta pública y la cookie de seis horas
   };
   assert.deepEqual(await login.json(), expected);
   const setCookie = login.headers.get('set-cookie')!;
-  for (const attribute of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/', 'Max-Age=21600']) {
+  for (const attribute of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/', 'Expires=']) {
     assert.ok(setCookie.includes(attribute));
   }
   const cookie = setCookie.split(';')[0]!;

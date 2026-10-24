@@ -1,30 +1,34 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import { AccountError } from './accounts.service.js';
+import { AccountError, dependencyUnavailable } from './account-error.js';
 import type { AccountsService } from './accounts.service.js';
-import type { SessionRecord } from './accounts.repository.js';
-import { SESSION_DURATION_MS } from './sessions.js';
+import type { RegistrationHandlerService } from './registration.service.js';
+import type { PublicUser } from './accounts.repository.js';
+import { publicSession } from './auth.response.js';
 
 const SESSION_COOKIE = 'biblioteca_session';
 
-function publicSession(session: SessionRecord, serverTime: Date) {
-  return {
-    user: session.user,
-    session: {
-      createdAt: session.createdAt.toISOString(),
-      expiresAt: session.expiresAt.toISOString(),
-    },
-    serverTime: serverTime.toISOString(),
-  };
+function sendError(res: express.Response, status: number, code: string, message: string) {
+  res.status(status).json({ error: { code, message } });
 }
 
-function sendError(
-  res: express.Response, status: number, code: string, message: string, fields?: Record<string, string>,
+function sessionCookie(res: express.Response, token: string, expiresAt: Date, serverTime: Date, production: boolean) {
+  const expiry = Math.floor(expiresAt.getTime() / 1000) * 1000;
+  if (!Number.isFinite(expiry) || !Number.isFinite(serverTime.getTime()) || expiry <= serverTime.getTime()) {
+    throw new AccountError('SERVICE_UNAVAILABLE');
+  }
+  // Mismo vencimiento absoluto de PostgreSQL; sin depender del reloj de Node.
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true, secure: production, sameSite: 'lax', path: '/', expires: new Date(expiry),
+  });
+}
+
+export function accountsController(
+  accounts: AccountsService | undefined,
+  production: boolean,
+  registration?: RegistrationHandlerService,
+  listUniversities?: () => Promise<PublicUser['university'][]>,
 ) {
-  res.status(status).json({ error: { code, message, ...(fields ? { fields } : {}) } });
-}
-
-export function accountsController(accounts: AccountsService, production: boolean) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   router.use(cookieParser());
@@ -38,22 +42,28 @@ export function accountsController(accounts: AccountsService, production: boolea
     next();
   });
   router.use(express.json({ limit: '16kb' }));
-  router.post('/auth/login', async (req, res) => {
-    const body: unknown = req.body;
-    const values = body && typeof body === 'object' ? body as Record<string, unknown> : {};
-    const result = await accounts.login(
-      { email: values['email'], password: values['password'] }, req.cookies[SESSION_COOKIE],
-    );
-    res.cookie(SESSION_COOKIE, result.token, {
-      httpOnly: true, secure: production, sameSite: 'lax', path: '/', maxAge: SESSION_DURATION_MS,
-    }).json(publicSession(result.session, result.serverTime));
+  if (registration) router.post('/auth/register', async (req, res) => {
+    const result = await registration.register(req.body, req.cookies[SESSION_COOKIE]);
+    sessionCookie(res, result.cookie.token, result.cookie.expiresAt, new Date(result.publicResponse.serverTime), production);
+    res.status(201).json(result.publicResponse);
   });
-  router.get('/auth/session', async (req, res) => {
-    const result = await accounts.requireSession(req.cookies[SESSION_COOKIE]);
-    res.json(publicSession(result.session, result.serverTime));
-  });
-  router.get('/universities', async (_req, res) => {
-    res.json({ universities: await accounts.universities() });
+  if (accounts) {
+    router.post('/auth/login', async (req, res) => {
+      const values = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
+      const result = await accounts.login(
+        { email: values['email'], password: values['password'] }, req.cookies[SESSION_COOKIE],
+      );
+      sessionCookie(res, result.token, result.session.expiresAt, result.serverTime, production);
+      res.json(publicSession(result.session, result.serverTime));
+    });
+    router.get('/auth/session', async (req, res) => {
+      const result = await accounts.requireSession(req.cookies[SESSION_COOKIE]);
+      res.json(publicSession(result.session, result.serverTime));
+    });
+  }
+  const universities = listUniversities ?? (accounts ? () => accounts.universities() : undefined);
+  if (universities) router.get('/universities', async (_req, res) => {
+    res.json({ universities: await universities() });
   });
   return router;
 }
@@ -61,22 +71,26 @@ export function accountsController(accounts: AccountsService, production: boolea
 export const accountErrorHandler: express.ErrorRequestHandler = (error: unknown, _req, res, _next) => {
   res.set('Cache-Control', 'no-store');
   if (error instanceof AccountError) {
-    const statusByCode: Record<AccountError['code'], number> = {
+    const statuses: Record<AccountError['code'], number> = {
       VALIDATION_ERROR: 400, INVALID_CREDENTIALS: 401, AUTH_REQUIRED: 401,
+      EMAIL_ALREADY_REGISTERED: 409, SERVICE_UNAVAILABLE: 503, INTERNAL_ERROR: 500,
     };
-    sendError(res, statusByCode[error.code], error.code, error.message, error.fields);
+    const safeError = new AccountError(error.code, error.fields);
+    res.status(statuses[error.code]).json({
+      error: { code: error.code, message: safeError.message, ...(error.fields ? { fields: error.fields } : {}) },
+    });
     return;
   }
   const kind = (error as { type?: string } | null)?.type;
   if (kind === 'entity.parse.failed' || kind === 'entity.too.large') {
-    res.status(kind === 'entity.too.large' ? 413 : 400).json({ error: {
-      code: kind === 'entity.too.large' ? 'PAYLOAD_TOO_LARGE' : 'VALIDATION_ERROR',
-      message: 'No se pudieron procesar los datos enviados.',
-    } });
-    return;
+    sendError(res, kind === 'entity.too.large' ? 413 : 400,
+      kind === 'entity.too.large' ? 'PAYLOAD_TOO_LARGE' : 'VALIDATION_ERROR',
+      'No se pudieron procesar los datos enviados.');
+  } else if (kind === 'charset.unsupported' || kind === 'encoding.unsupported') {
+    sendError(res, 415, 'UNSUPPORTED_MEDIA_TYPE', 'La codificación del contenido no es compatible.');
+  } else {
+    const unavailable = dependencyUnavailable(error);
+    const code = unavailable ? 'SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR';
+    sendError(res, unavailable ? 503 : 500, code, new AccountError(code).message);
   }
-  // No exponer mensajes de Prisma, conexiones ni stacks en respuestas HTTP.
-  res.status(503).json({ error: {
-    code: 'SERVICE_UNAVAILABLE', message: 'El servicio no está disponible. Intentá nuevamente.',
-  } });
 };

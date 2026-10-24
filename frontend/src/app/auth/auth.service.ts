@@ -1,8 +1,9 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { defer, finalize, fromEvent, tap } from 'rxjs';
+import { EMPTY, defer, finalize, fromEvent, tap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import type { AuthResponse } from './auth.types';
+import type { AuthResponse, RegistrationRequest } from './auth.types';
+import { normalizeEmail } from './auth.validation';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -15,18 +16,19 @@ export class AuthService {
   readonly session = signal<AuthResponse | null>(null);
   readonly status = signal<'loading' | 'anonymous' | 'authenticated' | 'unavailable'>('loading');
   readonly loginRequested = signal(false);
+  readonly authenticating = signal(false);
 
   constructor() {
     fromEvent(window, 'focus').pipe(takeUntilDestroyed()).subscribe(() => {
-      if (this.status() === 'authenticated' && !this.loginRequested()) this.restore();
+      if (this.status() === 'authenticated' && !this.loginRequested() && !this.authenticating()) this.restore();
     });
     this.destroyRef.onDestroy(() => clearTimeout(this.expiryTimer));
   }
 
   restore(): void {
-    if (this.restoring) return;
+    if (this.restoring || this.authenticating()) return;
     this.restoring = true;
-    const generation = ++this.generation;
+    const generation = this.generation;
     const expiryGeneration = this.expiryGeneration;
     const revalidating = this.status() === 'authenticated' && this.session() !== null;
     // La primera carga espera confirmación; una revalidación conserva la cuenta visible.
@@ -53,25 +55,48 @@ export class AuthService {
   }
 
   login(email: string, password: string) {
-    return defer(() => {
-      const generation = ++this.generation;
-      return this.http.post<AuthResponse>('/api/auth/login', { email: email.trim(), password }, {
-        headers: { 'X-Biblioteca-Request': '1' },
-      }).pipe(tap((response) => {
-        if (generation === this.generation) {
-          this.generation += 1;
-          this.accept(response);
-          this.loginRequested.set(false);
-        }
-      }));
+    return this.authenticate('/api/auth/login', { email: normalizeEmail(email), password });
+  }
+
+  register(data: RegistrationRequest) {
+    const { firstName, lastName, universityId, email, password } = data;
+    return this.authenticate('/api/auth/register', {
+      firstName, lastName, universityId, email: normalizeEmail(email), password,
     });
   }
 
-  openLogin(): void { this.loginRequested.set(true); }
+  private authenticate(url: string, body: object) {
+    return defer(() => {
+      // Una sola mutación por pestaña: ignorar un DTO no revierte su Set-Cookie.
+      if (this.authenticating()) return EMPTY;
+      this.authenticating.set(true);
+      const generation = ++this.generation;
+      return this.http.post<AuthResponse>(url, body, {
+        headers: { 'X-Biblioteca-Request': '1' },
+      }).pipe(
+        takeUntilDestroyed(this.destroyRef),
+        tap((response) => {
+          if (generation === this.generation) {
+            this.generation += 1;
+            this.accept(response);
+            this.loginRequested.set(false);
+          }
+        }),
+        finalize(() => {
+          this.authenticating.set(false);
+          // La consulta inicial anterior quedó invalidada; su respuesta ya no decide el estado.
+          if (generation === this.generation && this.status() === 'loading') this.status.set('unavailable');
+        }),
+      );
+    });
+  }
+
+  openLogin(): void { if (!this.authenticating()) this.loginRequested.set(true); }
   cancelLogin(): void { this.loginRequested.set(false); }
 
   /** El llamador ejecuta su acción solo si devuelve true; no se guarda un callback. */
   ensureAuthenticated(): boolean {
+    if (this.authenticating()) return false;
     if (this.status() === 'authenticated') return true;
     if (this.status() === 'anonymous') this.openLogin();
     return false;

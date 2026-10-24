@@ -9,6 +9,7 @@ import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputPasswordModule } from 'primeng/inputpassword';
 import { MessageModule } from 'primeng/message';
+import { emailValidator } from './auth.validation';
 
 @Component({
   selector: 'app-login-dialog',
@@ -38,7 +39,7 @@ export class LoginDialog implements OnDestroy {
     content: { style: { overflowY: 'auto' } },
   };
   protected readonly form = new FormGroup({
-    email: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    email: new FormControl('', { nonNullable: true, validators: [Validators.required, emailValidator] }),
     password: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
   });
 

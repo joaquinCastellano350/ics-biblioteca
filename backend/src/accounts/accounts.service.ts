@@ -1,22 +1,16 @@
 import { normalizeEmail, validEmail, validPassword, verifyPassword } from './credentials.js';
 import { newSessionToken, SESSION_DURATION_MS, sessionIsValid, tokenHash, validSessionToken } from './sessions.js';
 import type { AccountsRepository } from './accounts.repository.js';
+import { AccountError } from './account-error.js';
+export { AccountError } from './account-error.js';
 
 interface LoginInput {
   email: unknown;
   password: unknown;
 }
 
-export class AccountError extends Error {
-  constructor(
-    public readonly code: 'VALIDATION_ERROR' | 'INVALID_CREDENTIALS' | 'AUTH_REQUIRED',
-    message: string,
-    public readonly fields?: Record<string, string>,
-  ) { super(message); }
-}
-
 function authRequired(): AccountError {
-  return new AccountError('AUTH_REQUIRED', 'Iniciá sesión para continuar.');
+  return new AccountError('AUTH_REQUIRED');
 }
 
 export class AccountsService {
@@ -29,11 +23,11 @@ export class AccountsService {
     if (!validEmail(email)) fields['email'] = 'Ingresá un correo válido.';
     if (!validPassword(password)) fields['password'] = 'Ingresá una contraseña de hasta 1024 bytes.';
     if (Object.keys(fields).length || !validPassword(password)) {
-      throw new AccountError('VALIDATION_ERROR', 'Revisá los datos ingresados.', fields);
+      throw new AccountError('VALIDATION_ERROR', fields);
     }
     const user = await this.repository.findUser(email);
     if (!user || !await verifyPassword(user.passwordHash, password)) {
-      throw new AccountError('INVALID_CREDENTIALS', 'El correo o la contraseña son incorrectos.');
+      throw new AccountError('INVALID_CREDENTIALS');
     }
     const token = newSessionToken();
     const result = await this.repository.createSession({

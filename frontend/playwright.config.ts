@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  outputDir: '../node_modules/.cache/playwright-results',
   fullyParallel: true,
   workers: 2,
   reporter: 'list',

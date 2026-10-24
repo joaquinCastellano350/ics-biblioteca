@@ -14,12 +14,14 @@
   <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
     <div class="field">
       <label for="login-email">Correo electrónico</label>
-      <input #emailInput pInputText id="login-email" type="email" formControlName="email" autocomplete="username"
+      <input #emailInput pInputText id="login-email" type="text" inputmode="email" formControlName="email" autocomplete="username"
         placeholder="nombre@ejemplo.com" required [fluid]="true"
         [invalid]="form.controls.email.touched && form.controls.email.invalid"
         [attr.aria-describedby]="form.controls.email.touched && form.controls.email.invalid ? 'email-error' : null" />
       @if (form.controls.email.touched && form.controls.email.hasError('required')) {
         <p class="field-error" id="email-error">Ingresá tu correo electrónico.</p>
+      } @else if (form.controls.email.touched && form.controls.email.hasError('email')) {
+        <p class="field-error" id="email-error">Ingresá un correo electrónico válido.</p>
       }
     </div>
     <div class="field">

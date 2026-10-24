@@ -1,6 +1,6 @@
 # Frontend
 
-Workspace `@ics-biblioteca/frontend`: Angular 22, componentes standalone, PrimeNG 22, routing, CSS y salida estática. Implementa el catálogo público de SCRUM-13 y el módulo de autenticación con el diálogo de login de SCRUM-8. Conserva el tema `bibliotecaTheme` y las fuentes del equipo. La landing, el encabezado, la navegación y el footer pertenecen a SCRUM-6; el registro corresponde a su propia historia.
+Workspace `@ics-biblioteca/frontend`: Angular 22, componentes standalone, PrimeNG 22, routing, CSS y salida estática. Implementa el catálogo público de SCRUM-13, el registro de SCRUM-7 y el diálogo de login de SCRUM-8. Conserva el tema `bibliotecaTheme` y las fuentes del equipo. La landing y la composición visual final del encabezado, navegación y footer pertenecen a SCRUM-6.
 
 Las convenciones visuales fijas están en [Convenciones de UI](../docs/convenciones-ui.md): usar PrimeNG y mantener los estilos de la referencia HTML compartida.
 
@@ -29,13 +29,15 @@ El build de producción genera los archivos estáticos en `frontend/dist/bibliot
 
 `/catalogo` es público y consulta `GET /api/books`, con estados de carga, vacío, error y reintento. La raíz redirige al catálogo hasta integrar la landing de SCRUM-6.
 
-`AuthService` comparte la sesión en memoria y la restaura al cargar. Las próximas pantallas pueden usar `ensureAuthenticated()`: si devuelve `false`, no ejecutan su acción y esperan otro clic después del login. El diálogo de PrimeNG conserva la página, permite Escape y gestiona el foco.
+`AuthService` comparte la sesión en memoria y la restaura al cargar. Registro y login aceptan el mismo DTO antes de cerrar el diálogo o navegar; no guardan tokens en almacenamiento web ni necesitan otro GET para confirmar el éxito. Un bloqueo compartido serializa ambas escrituras y evita revalidaciones por foco durante ellas. Las respuestas de restauraciones anteriores se descartan mediante una generación de autenticación. Las próximas pantallas pueden usar `ensureAuthenticated()`: si devuelve `false`, no ejecutan su acción y esperan otro clic después del login. El diálogo de PrimeNG conserva la página, permite Escape y gestiona el foco.
+
+Ambos formularios usan `auth.validation.ts` con `validator`, la misma regla de correo del backend. El correo se recorta y convierte a minúsculas; la contraseña se envía exactamente como se escribió. Los campos usan `type="text" inputmode="email"` para conservar dominios internacionales sin que el navegador los convierta silenciosamente a punycode.
 
 La comprobación de sesión se repite al recuperar foco cuando hay una sesión autenticada y el diálogo está cerrado. Se hace en segundo plano, conserva la cuenta visible y agrupa eventos de foco mientras haya una consulta en curso. No hay polling. Un 401 o el vencimiento retiran la sesión; un fallo temporal durante la revalidación conserva su fecha de vencimiento original.
 
 ## Integración con SCRUM-6
 
-La raíz mantiene únicamente `<router-outlet />` y `<app-login-dialog />`. `App` restaura la sesión una vez al arrancar. SCRUM-6 puede implementar la landing como una pantalla registrada en `app.routes.ts` y conservar la navegación y la composición visual a su cargo.
+La raíz contiene una navegación mínima entre catálogo y registro, la identidad o acceso al login, un reintento de sesión ante fallos, `<router-outlet />` y un único `<app-login-dialog />`. `App` restaura la sesión una vez al arrancar. SCRUM-6 puede implementar la landing como una pantalla registrada en `app.routes.ts` y adaptar esta navegación.
 
 Para conectar el acceso de inicio de sesión, importar `AuthService`, inyectarlo en la pantalla o el encabezado e importar `ButtonModule` de PrimeNG:
 
@@ -45,7 +47,7 @@ protected readonly auth = inject(AuthService);
 
 ```html
 <p-button label="Iniciar sesión" (onClick)="auth.openLogin()"
-  [disabled]="auth.status() === 'loading'"
+  [disabled]="auth.status() === 'loading' || auth.authenticating()"
   [pt]="{ root: { 'aria-controls': 'login-dialog', 'aria-expanded': auth.loginRequested() } }" />
 ```
 
@@ -53,8 +55,10 @@ El nombre del usuario está disponible en `auth.session()?.user.firstName`. El b
 
 El modal conserva sus dimensiones y los ajustes de PrimeNG dentro de `auth/`, sin selectores de la landing. Al cerrar, devuelve el foco al elemento que lo abrió; si ese elemento desapareció, enfoca su propio host.
 
-Las pruebas de `AuthService` verifican revalidación, vencimiento y respuestas fuera de orden; las del catálogo verifican su lectura pública y sus estados.
+Las pruebas de `AuthService` verifican revalidación, vencimiento, respuestas fuera de orden, registro y escrituras concurrentes; las del catálogo verifican su lectura pública y sus estados. Las pruebas de composición comprueban registro autenticado y login sin perder la vista del catálogo.
 
 `auth/login-dialog.spec.ts` prueba el diálogo real de PrimeNG y `AuthService` con HTTP simulado: errores 401 y 503, reintento, devolución de foco, limpieza del formulario y cierre con Cancelar, cruz o Escape, también con una petición pendiente. Estas pruebas no acceden a Neon.
+
+`npm run test:e2e --workspace frontend` ejecuta Playwright en escritorio, tablet y móvil usando Chrome instalado. Comprueba formularios, navegación, cookie HttpOnly, recarga, login, catálogo y desbordamiento horizontal. Sus respuestas HTTP están simuladas: no ejecuta el backend ni escribe en Neon. Las pruebas SQL/HTTP del backend verifican por separado el comportamiento de persistencia. Ver [la integración de registro y login](../docs/integracion-hu02-hu03.md).
 
 Administrar nuevas dependencias desde la raíz siguiendo el [README del repositorio](../README.md).
