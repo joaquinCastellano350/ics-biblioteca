@@ -40,6 +40,7 @@ export class CatalogPage {
   readonly subjects = signal<CatalogTerm[]>([]);
   readonly subjectsStatus = signal<'loading' | 'ready' | 'error'>('loading');
   readonly selectedSubjects = signal<readonly CatalogTerm[]>([]);
+  readonly draftSubjects = signal<readonly CatalogTerm[]>([]);
   readonly titleQuery = signal('');
   @ViewChild('authorToggle') private authorToggle?: ElementRef<HTMLButtonElement>;
   @ViewChild('authorSearchInput') private authorSearchInput?: ElementRef<HTMLInputElement>;
@@ -163,9 +164,34 @@ export class CatalogPage {
     });
   }
 
-  updateSelectedSubjects(subjects: readonly CatalogTerm[] | null | undefined): void {
-    const selected = [...(subjects ?? [])];
+  startSubjectSelection(): void {
+    this.draftSubjects.set([...this.selectedSubjects()]);
+  }
+
+  updateDraftSubjects(subjects: readonly CatalogTerm[] | null | undefined): void {
+    this.draftSubjects.set([...(subjects ?? [])]);
+  }
+
+  applySubjectSelection(): void {
+    this.setAppliedSubjects(this.draftSubjects());
+    this.closeSubjectSelector();
+  }
+
+  discardSubjectSelection(): void {
+    this.draftSubjects.set([...this.selectedSubjects()]);
+  }
+
+  private setAppliedSubjects(subjects: readonly CatalogTerm[]): void {
+    const selected = [...subjects];
+    const applied = this.selectedSubjects();
+    const unchanged = selected.length === applied.length
+      && applied.every(({ id }) => selected.some((subject) => subject.id === id));
+    if (unchanged) {
+      this.draftSubjects.set([...applied]);
+      return;
+    }
     this.selectedSubjects.set(selected);
+    this.draftSubjects.set(selected);
     const { subjectIds: _previousSubjectIds, ...otherCriteria } = this.criteria;
     this.criteria = selected.length
       ? { ...otherCriteria, subjectIds: selected.map(({ id }) => id) }
@@ -174,17 +200,18 @@ export class CatalogPage {
   }
 
   isSubjectSelected(subject: CatalogTerm): boolean {
-    return this.selectedSubjects().some(({ id }) => id === subject.id);
+    return this.draftSubjects().some(({ id }) => id === subject.id);
   }
-  clearSubjectSelection(): void { this.updateSelectedSubjects([]); }
+  clearSubjectSelection(): void { this.updateDraftSubjects([]); }
   closeSubjectSelector(): void { this.subjectSelect?.hide(); }
   removeSubject(subject: CatalogTerm): void {
-    this.updateSelectedSubjects(this.selectedSubjects().filter(({ id }) => id !== subject.id));
+    this.setAppliedSubjects(this.selectedSubjects().filter(({ id }) => id !== subject.id));
   }
 
   clearFilters(): void {
     this.titleQuery.set('');
     this.selectedSubjects.set([]);
+    this.draftSubjects.set([]);
     const { title: _title, subjectIds: _subjectIds, ...otherCriteria } = this.criteria;
     this.criteria = otherCriteria;
     this.load();

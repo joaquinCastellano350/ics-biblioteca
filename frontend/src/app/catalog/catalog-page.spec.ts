@@ -42,6 +42,11 @@ function chooseSubject(root: HTMLElement, name: string): void {
   option?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 }
 
+function subjectOption(root: HTMLElement, name: string): Element | undefined {
+  return Array.from(root.querySelectorAll('.p-select-option'))
+    .find((candidate) => candidate.textContent?.includes(name));
+}
+
 function openAuthorMenu(fixture: ComponentFixture<CatalogPage>, http: HttpTestingController) {
   fixture.nativeElement.querySelector('.filter-button').click();
   fixture.detectChanges();
@@ -318,34 +323,55 @@ describe('Public catalog', () => {
     expect(root.textContent).toContain('Listo');
     expect(root.querySelector('.filter-clear')).not.toBeNull();
     expect(root.querySelector('.filter-done')).not.toBeNull();
+    expect(http.match('/api/books')).toHaveLength(0);
     root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     );
+    fixture.detectChanges();
+    expect(http.match('/api/books')).toHaveLength(0);
   });
 
-  it('combines title, author and multiple subject filters without discarding active criteria', async () => {
+  it('keeps one and multiple subject changes provisional until Listo, then applies them together', async () => {
     const fixture = TestBed.createComponent(CatalogPage);
     const http = TestBed.inject(HttpTestingController);
-    flushInitialSubjectRequests(http);
+    http.expectOne('/api/books').flush({
+      books: [{ id: 'book-1', title: 'Libro visible', authors: [], subjects: [] }],
+    });
+    http.expectOne('/api/subjects').flush({ subjects });
     await fixture.whenStable();
     fixture.detectChanges();
 
     const root = openSubjectSelector(fixture);
     chooseSubject(root, 'Redes');
     fixture.detectChanges();
-    const firstSubject = expectBooks(http);
-    expect(firstSubject.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id]);
-    firstSubject.flush({ books: [] });
-    await fixture.whenStable();
-    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedSubjects()).toEqual([]);
+    expect(fixture.componentInstance.books().map(({ id }) => id)).toEqual(['book-1']);
+    expect(root.querySelector('app-book-card')).not.toBeNull();
+    expect(http.match('/api/books')).toHaveLength(0);
 
     chooseSubject(root, 'Sistemas');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedSubjects()).toEqual([]);
+    expect(http.match('/api/books')).toHaveLength(0);
+    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
     fixture.detectChanges();
     const multipleSubjects = expectBooks(http);
     expect(multipleSubjects.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id, subjects[1]?.id]);
     multipleSubjects.flush({ books: [] });
     await fixture.whenStable();
     fixture.detectChanges();
+
+    openSubjectSelector(fixture);
+    expect(subjectOption(root, 'Redes')?.getAttribute('aria-selected')).toBe('true');
+    expect(subjectOption(root, 'Sistemas')?.getAttribute('aria-selected')).toBe('true');
+    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    fixture.detectChanges();
+    expect(http.match('/api/books')).toHaveLength(0);
+
     const subjectChip = root.querySelector('[aria-label="Quitar materia Redes"]');
     expect(subjectChip?.closest('.subject-filter')).not.toBeNull();
     expect(subjectChip?.classList).toContain('chip');
@@ -354,11 +380,6 @@ describe('Public catalog', () => {
     expect(subjectSelect?.classList.contains('selected')).toBe(false);
     expect(subjectSelect?.textContent).toContain('Materias');
     expect(subjectSelect?.textContent).toContain('(2)');
-    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
-      new MouseEvent('click', { bubbles: true }),
-    );
-    fixture.detectChanges();
-
     root.querySelector('.filter-button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     fixture.detectChanges();
     http.expectOne('/api/authors').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
@@ -392,6 +413,77 @@ describe('Public catalog', () => {
     expect(afterRemoval.request.params.getAll('authorIds')).toEqual(['author-1']);
     expect(afterRemoval.request.params.getAll('subjectIds')).toEqual([subjects[1]?.id]);
     afterRemoval.flush({ books: [] });
+    await fixture.whenStable();
+  });
+
+  it('discards subject changes on Escape and preserves the applied title and author filters', async () => {
+    const fixture = TestBed.createComponent(CatalogPage);
+    const http = TestBed.inject(HttpTestingController);
+    flushInitialSubjectRequests(http);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    openAuthorMenu(fixture, http).flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    checkboxFor(fixture, 'Ana').click();
+    root.querySelector('.filter-done')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+    const withAuthor = expectBooks(http);
+    withAuthor.flush({ books: [] });
+    await fixture.whenStable();
+
+    const title = root.querySelector('#catalog-title-search') as HTMLInputElement;
+    title.value = 'redes';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    const withTitle = expectBooks(http);
+    expect(withTitle.request.params.get('title')).toBe('redes');
+    expect(withTitle.request.params.getAll('authorIds')).toEqual(['author-1']);
+    withTitle.flush({ books: [] });
+    await fixture.whenStable();
+
+    openSubjectSelector(fixture);
+    chooseSubject(root, 'Redes');
+    chooseSubject(root, 'Sistemas');
+    fixture.detectChanges();
+    expect(http.match('/api/books')).toHaveLength(0);
+    root.querySelector('input.p-select-filter')?.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Escape', code: 'Escape', bubbles: true,
+    }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedSubjects()).toEqual([]);
+    expect(fixture.componentInstance.draftSubjects()).toEqual([]);
+    expect(root.querySelectorAll('[aria-label^="Quitar materia "]')).toHaveLength(0);
+    expect(http.match('/api/books')).toHaveLength(0);
+
+    const subjectSelectComponent = fixture.debugElement.query(By.directive(Select)).componentInstance as Select;
+    subjectSelectComponent.show();
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(subjectOption(root, 'Redes')?.getAttribute('aria-selected')).toBe('false');
+    expect(subjectOption(root, 'Sistemas')?.getAttribute('aria-selected')).toBe('false');
+    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    fixture.detectChanges();
+    expect(http.match('/api/books')).toHaveLength(0);
+
+    title.value = 'algoritmos';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    const afterCancel = expectBooks(http);
+    expect(afterCancel.request.params.get('title')).toBe('algoritmos');
+    expect(afterCancel.request.params.getAll('authorIds')).toEqual(['author-1']);
+    expect(afterCancel.request.params.has('subjectIds')).toBe(false);
+    afterCancel.flush({ books: [] });
     await fixture.whenStable();
   });
 

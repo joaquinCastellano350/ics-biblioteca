@@ -70,11 +70,12 @@
         filterPlaceholder="Buscar materia…" emptyMessage="No hay materias disponibles."
         emptyFilterMessage="No hay coincidencias."
         [placeholder]="subjectsStatus() === 'loading' ? 'Cargando materias…' : 'Materias'"
-        [loading]="subjectsStatus() === 'loading'" [ngModel]="selectedSubjects()"
-        (ngModelChange)="updateSelectedSubjects($event)" [disabled]="subjectsStatus() !== 'ready'"
+        [loading]="subjectsStatus() === 'loading'" [ngModel]="draftSubjects()"
+        (ngModelChange)="updateDraftSubjects($event)" (onShow)="startSubjectSelection()"
+        (onHide)="discardSubjectSelection()" [disabled]="subjectsStatus() !== 'ready'"
         ariaLabel="Filtrar por materias">
         <ng-template #selectedItem>
-          Materias@if (selectedSubjects().length) { ({{ selectedSubjects().length }}) }
+          Materias@if (draftSubjects().length) { ({{ draftSubjects().length }}) }
         </ng-template>
         <ng-template #item let-subject>
           <div class="subject-option">
@@ -86,7 +87,7 @@
         <ng-template #footer>
           <div class="filter-footer">
             <button class="filter-clear" type="button" (click)="clearSubjectSelection()">Limpiar</button>
-            <button class="filter-done" type="button" (click)="closeSubjectSelector()">Listo</button>
+            <button class="filter-done" type="button" (click)="applySubjectSelection()">Listo</button>
           </div>
         </ng-template>
       </p-select>
