@@ -2,5 +2,18 @@
   <a routerLink="/catalogo">Catálogo</a>
   <span aria-hidden="true"> · </span>
   <a routerLink="/registro">Crear cuenta</a>
+  @if (auth.session(); as session) {
+    <span aria-live="polite"> · Hola, {{ session.user.firstName }}</span>
+  } @else {
+    <p-button label="Iniciar sesión" variant="text" (onClick)="auth.openLogin()"
+      [disabled]="auth.authenticating() || auth.status() === 'loading'"
+      [pt]="{ root: { 'aria-controls': 'login-dialog', 'aria-expanded': auth.loginRequested() } }" />
+  }
 </nav>
+@if (auth.status() === 'unavailable') {
+  <p-message severity="error">No pudimos comprobar tu sesión.
+    <p-button label="Reintentar sesión" variant="text" (onClick)="auth.restore()" [disabled]="auth.authenticating()" />
+  </p-message>
+}
 <router-outlet />
+<app-login-dialog />

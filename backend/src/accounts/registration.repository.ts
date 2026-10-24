@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { normalizeEmail } from './registration.validation.js';
+import { normalizeEmail } from './credentials.js';
+import { dependencyUnavailable } from './account-error.js';
+import { createSessionInTransaction, databaseTime } from './prisma-session.js';
 import {
   REGISTRATION_SESSION_DURATION_MS, RegistrationPersistenceError,
 } from './registration.service.js';
@@ -51,20 +53,7 @@ function persistenceFailure(error: unknown): Error {
     return new RegistrationPersistenceError('EMAIL_ALREADY_REGISTERED');
   }
 
-  const unavailableCodes = new Set([
-    'P1000', 'P1001', 'P1002', 'P1008', 'P1010', 'P1017', 'P2024',
-    'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
-    '57P01', '57P02', '57P03', '53300', '57014',
-  ]);
-  const unavailableKinds = new Set([
-    'DatabaseNotReachable', 'ConnectionClosed', 'TlsConnectionError',
-    'AuthenticationFailed', 'DatabaseAccessDenied', 'SocketTimeout',
-  ]);
-  if (records.some((record) => {
-    const code = record['code'] ?? record['originalCode'];
-    return (typeof code === 'string' && (unavailableCodes.has(code) || /^08[0-9A-Z]{3}$/.test(code)))
-      || (typeof record['kind'] === 'string' && unavailableKinds.has(record['kind']));
-  })) return new RegistrationPersistenceError('DEPENDENCY_UNAVAILABLE');
+  if (dependencyUnavailable(error)) return new RegistrationPersistenceError('DEPENDENCY_UNAVAILABLE');
 
   // El servicio convierte este error genérico en INTERNAL_ERROR, sin mensajes del motor.
   return new Error('No se pudo completar la persistencia del registro.');
@@ -90,34 +79,22 @@ export class PostgresRegistrationRepository implements RegistrationRepository {
         if (!university) throw new RegistrationPersistenceError('UNIVERSITY_NOT_FOUND');
 
         // El bloqueo mantiene válida la referencia hasta finalizar la transacción.
-        const [clock] = await tx.$queryRaw<{ now: Date }[]>`
-          SELECT clock_timestamp()::timestamptz(3) AS now
-        `;
-        if (!clock || !Number.isFinite(clock.now.getTime())) throw new Error('Reloj no disponible.');
+        const now = await databaseTime(tx);
 
         const [user] = await tx.$queryRaw<Omit<RegistrationPublicUser, 'university'>[]>`
           INSERT INTO public.users
             (id, first_name, last_name, university_id, email, password_hash, created_at)
           VALUES (${randomUUID()}::uuid, ${input.firstName}, ${input.lastName},
             ${university.id}::uuid, ${normalizeEmail(input.email)}, ${input.passwordHash},
-            ${clock.now}::timestamptz(3))
+            ${now}::timestamptz(3))
           RETURNING id, first_name AS "firstName", last_name AS "lastName", email
         `;
         if (!user) throw new Error('No se obtuvo el usuario creado.');
 
-        const [session] = await tx.$queryRaw<{ createdAt: Date; expiresAt: Date }[]>`
-          INSERT INTO public.sessions (id, user_id, token_hash, created_at, expires_at)
-          VALUES (${randomUUID()}::uuid, ${user.id}::uuid, ${input.tokenHash},
-            ${clock.now}::timestamptz(3),
-            ${clock.now}::timestamptz(3) + interval '6 hours')
-          RETURNING created_at AS "createdAt", expires_at AS "expiresAt"
-        `;
-        if (!session || !Number.isFinite(session.createdAt.getTime())
-          || !Number.isFinite(session.expiresAt.getTime())
-          || session.createdAt.getTime() !== clock.now.getTime()
-          || session.expiresAt.getTime() - session.createdAt.getTime() !== REGISTRATION_SESSION_DURATION_MS) {
-          throw new Error('No se obtuvo una sesión válida.');
-        }
+        const session = await createSessionInTransaction(tx, {
+          userId: user.id, tokenHash: input.tokenHash,
+          ...(input.previousTokenHash ? { previousTokenHash: input.previousTokenHash } : {}),
+        }, now);
 
         return {
           user: {
@@ -125,7 +102,7 @@ export class PostgresRegistrationRepository implements RegistrationRepository {
             university: { id: university.id, name: university.name },
           },
           session: { createdAt: session.createdAt, expiresAt: session.expiresAt },
-          serverTime: clock.now,
+          serverTime: now,
         };
       });
     } catch (error) {

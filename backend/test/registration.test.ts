@@ -4,9 +4,9 @@ import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import type { TestContext } from 'node:test';
 import { createApp } from '../src/app.js';
-import { RegistrationError, REGISTRATION_SESSION_DURATION_MS } from '../src/modules/accounts/registration.service.js';
-import type { RegistrationResult } from '../src/modules/accounts/registration.service.js';
-import type { RegistrationHandlerService } from '../src/modules/accounts/registration.controller.js';
+import { RegistrationError, REGISTRATION_SESSION_DURATION_MS } from '../src/accounts/registration.service.js';
+import type { RegistrationResult } from '../src/accounts/registration.service.js';
+import type { RegistrationHandlerService } from '../src/accounts/registration.service.js';
 
 const token = 's'.repeat(43);
 const input = {
@@ -135,6 +135,7 @@ for (const scenario of ['vencida', 'vence ahora', 'sin segundo completo restante
       : scenario === 'sin segundo completo restante' ? Math.floor(expiry / 1000) * 1000
       : expiry;
     if (scenario === 'fecha inválida') expected.cookie.expiresAt = new Date(NaN);
+    expected.publicResponse.serverTime = new Date(responseTime).toISOString();
     const app = await start(t, async () => {
       t.mock.method(Date, 'now', () => responseTime);
       return expected;
@@ -160,7 +161,7 @@ test('la respuesta JSON no contiene token, contraseña, hashes ni contenedor coo
 });
 
 for (const [code, status] of [
-  ['VALIDATION_ERROR', 400], ['UNIVERSITY_NOT_FOUND', 400],
+  ['VALIDATION_ERROR', 400],
   ['EMAIL_ALREADY_REGISTERED', 409], ['SERVICE_UNAVAILABLE', 503], ['INTERNAL_ERROR', 500],
 ] as const) {
   test(`error tipado ${code} devuelve ${status} sin cookie ni detalles internos`, async (t) => {
@@ -195,7 +196,7 @@ test('error inesperado no expone mensajes, stack, token ni propiedades que imite
   const response = await app.send();
   assert.equal(response.status, 500);
   assert.equal(response.headers.get('set-cookie'), null);
-  assert.deepEqual(await response.json(), { error: { code: 'INTERNAL_ERROR', message: 'No se pudo completar el registro.' } });
+  assert.deepEqual(await response.json(), { error: { code: 'INTERNAL_ERROR', message: 'No se pudo completar la operación.' } });
 });
 
 test('encabezado ausente o incorrecto devuelve 403 antes de analizar el cuerpo', async (t) => {
@@ -208,7 +209,7 @@ test('encabezado ausente o incorrecto devuelve 403 antes de analizar el cuerpo',
     const response = await app.send('{json inválido', headers);
     assert.equal(response.status, 403);
     assert.equal(response.headers.get('set-cookie'), null);
-    assert.equal((await response.json()).error.code, 'FORBIDDEN');
+    assert.equal((await response.json()).error.code, 'REQUEST_NOT_ALLOWED');
   }
   assert.equal(app.calls, 0);
 });
@@ -242,7 +243,7 @@ test('JSON mal formado devuelve 400 sin filtrar el cuerpo ni llamar al servicio'
   assert.equal(response.status, 400);
   assert.equal(response.headers.get('set-cookie'), null);
   assert.deepEqual(await response.json(), {
-    error: { code: 'VALIDATION_ERROR', message: 'El cuerpo debe contener JSON válido.' },
+    error: { code: 'VALIDATION_ERROR', message: 'No se pudieron procesar los datos enviados.' },
   });
   assert.equal(app.calls, 0);
 });
@@ -258,7 +259,7 @@ test('límite de 16 KiB: acepta el tamaño exacto y rechaza un byte adicional', 
   assert.equal(rejected.status, 413);
   assert.equal(rejected.headers.get('set-cookie'), null);
   assert.deepEqual(await rejected.json(), {
-    error: { code: 'PAYLOAD_TOO_LARGE', message: 'El cuerpo supera el límite de 16 KiB.' },
+    error: { code: 'PAYLOAD_TOO_LARGE', message: 'No se pudieron procesar los datos enviados.' },
   });
   assert.equal(app.calls, 1);
 });
@@ -289,9 +290,9 @@ test('charset no compatible devuelve 415 sin cookie ni llamada al servicio', asy
 test('no agrega login, logout ni otras rutas y mantiene público el listado', async (t) => {
   const app = await start(t);
   for (const path of ['/api/auth/login', '/api/auth/logout', '/api/auth/me']) {
-    const response = await fetch(`${app.url}${path}`, { method: 'POST' });
+    const response = await fetch(`${app.url}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1' }, body: '{}' });
     assert.equal(response.status, 404);
-    assert.deepEqual(await response.json(), { error: 'NOT_FOUND' });
+    assert.equal((await response.json()).error.code, 'NOT_FOUND');
   }
   const universities = await fetch(`${app.url}/api/universities`);
   assert.equal(universities.status, 200);

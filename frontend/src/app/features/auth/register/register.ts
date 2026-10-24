@@ -5,23 +5,12 @@ import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 import { Select, SelectModule } from 'primeng/select';
 import type { SelectPassThrough } from 'primeng/select';
+import { emailValidator, normalizeEmail } from '../../../auth/auth.validation';
+import type { University as RegistrationUniversity, RegistrationRequest, RegistrationFieldErrors } from '../../../auth/auth.types';
+export type { University as RegistrationUniversity, RegistrationRequest, RegistrationFieldErrors } from '../../../auth/auth.types';
 
 // Se conserva universityId para respetar el contrato HTTP, aunque la interfaz diga facultad.
-export interface RegistrationUniversity {
-  id: string;
-  name: string;
-}
-
-export interface RegistrationRequest {
-  firstName: string;
-  lastName: string;
-  universityId: string;
-  email: string;
-  password: string;
-}
-
 export type RegistrationField = keyof RegistrationRequest;
-export type RegistrationFieldErrors = Partial<Record<RegistrationField, string>>;
 
 const requiredText: ValidatorFn = (control) =>
   typeof control.value === 'string' && control.value.trim().length > 0
@@ -63,7 +52,7 @@ export class Register {
     }),
     email: new FormControl('', {
       nonNullable: true,
-      validators: [requiredText, Validators.email],
+      validators: [requiredText, emailValidator],
     }),
     password: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
   });
@@ -132,6 +121,7 @@ export class Register {
       ...value,
       firstName: value.firstName.trim(),
       lastName: value.lastName.trim(),
+      email: normalizeEmail(value.email),
       // La contraseña se transmite sin transformaciones al contenedor.
     });
   }

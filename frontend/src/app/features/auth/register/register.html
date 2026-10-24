@@ -71,7 +71,7 @@
 
         <div class="field full-width">
           <label for="register-email">Correo electrónico</label>
-          <input pInputText id="register-email" type="email" formControlName="email"
+          <input pInputText id="register-email" type="text" inputmode="email" formControlName="email"
             autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="nombre@ejemplo.com" required
             [invalid]="!!messageFor('email')"
             [attr.aria-invalid]="!!messageFor('email')"
@@ -104,6 +104,7 @@
 
     <div class="actions">
       <p-button type="submit" [label]="loading() ? 'Creando cuenta…' : 'Crear cuenta'"
+        [ariaLabel]="loading() ? 'Creando cuenta…' : 'Crear cuenta'"
         icon="pi pi-arrow-right" iconPos="right" styleClass="btn primary"
         [style]="{ width: '100%', minHeight: '46px' }"
         [loading]="loading()" [disabled]="submissionBlocked()" />

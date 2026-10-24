@@ -8,7 +8,7 @@ import { ButtonModule } from 'primeng/button';
 import { Register } from './register';
 import type { RegistrationUniversity } from './register';
 import { UniversitiesService } from './universities.service';
-import { RegistrationService } from './registration.service';
+import { AuthService } from '../../../auth/auth.service';
 import type { RegistrationErrorResponse, RegistrationFieldErrors, RegistrationRequest } from './registration.types';
 
 @Component({
@@ -21,7 +21,7 @@ import type { RegistrationErrorResponse, RegistrationFieldErrors, RegistrationRe
 })
 export class RegisterPage implements OnInit {
   private readonly service = inject(UniversitiesService);
-  private readonly registrationService = inject(RegistrationService);
+  readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   readonly universities = signal<RegistrationUniversity[]>([]);
@@ -37,13 +37,13 @@ export class RegisterPage implements OnInit {
   }
 
   register(data: RegistrationRequest): void {
-    if (this.submitting() || this.registered() || this.universitiesLoading()
+    if (this.auth.authenticating() || this.submitting() || this.registered() || this.universitiesLoading()
       || this.universitiesError() || this.universities().length === 0) return;
 
     this.submitting.set(true);
     this.registrationError.set(null);
     this.registrationFieldErrors.set({});
-    this.registrationService.register(data).pipe(
+    this.auth.register(data).pipe(
       takeUntilDestroyed(this.destroyRef),
       finalize(() => this.submitting.set(false)),
     ).subscribe({

@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { test } from 'node:test';
-import {
-  generateSessionToken, hashPassword, hashSessionToken, verifyPassword,
-} from '../src/modules/accounts/registration.security.js';
+import { hashPassword, verifyPassword } from '../src/accounts/credentials.js';
+import { newSessionToken as generateSessionToken, tokenHash as hashSessionToken } from '../src/accounts/sessions.js';
 
 test('genera un hash Argon2id con los parámetros acordados y verifica la contraseña', async () => {
   const digest = await hashPassword('a');
@@ -50,9 +49,9 @@ test('no verifica contraseñas de tipo incorrecto, vacías o demasiado largas', 
   }
 });
 
-test('un digest inválido no autentica ni filtra errores de la biblioteca', async () => {
-  assert.equal(await verifyPassword('', 'a'), false);
-  assert.equal(await verifyPassword('digest-invalido', 'a'), false);
+test('un digest corrupto produce un fallo interno en vez de credenciales incorrectas', async () => {
+  await assert.rejects(verifyPassword('', 'a'));
+  await assert.rejects(verifyPassword('digest-invalido', 'a'));
 });
 
 test('los tokens tienen 32 bytes, formato base64url y valores distintos', () => {

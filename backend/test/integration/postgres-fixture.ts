@@ -2,16 +2,13 @@ import { readFile } from 'node:fs/promises';
 import { Client } from 'pg';
 import type { QueryResultRow } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { universities } from '../../prisma/universities.js';
 
 const accountsMigration = new URL('../../prisma/migrations/20261022170000_accounts_and_sessions/migration.sql', import.meta.url);
-export const testUniversity = {
-  id: '00000000-0000-4000-8000-000000000007',
-  name: 'Facultad de prueba HU-02 (entorno aislado)',
-};
 
 /** Sin fallback, dotenv, Prisma CLI ni acceso a la configuración de desarrollo. */
 function connectionSettings() {
-  if (process.env['HU02_ALLOW_INTEGRATION_WRITES'] !== '1') {
+  if (process.env['ACCOUNTS_ALLOW_INTEGRATION_WRITES'] !== '1') {
     throw new Error('Integración bloqueada: falta habilitar explícitamente escrituras de prueba.');
   }
   const raw = process.env['TEST_DATABASE_URL'];
@@ -20,18 +17,18 @@ function connectionSettings() {
   try { url = new URL(raw); } catch { throw new Error('Destino de integración inválido.'); }
   if (!['postgres:', 'postgresql:'].includes(url.protocol)
     || url.hostname !== '127.0.0.1' || url.port !== '55432'
-    || url.pathname !== '/ics_hu02_test' || url.username !== 'hu02_test_admin'
+    || url.pathname !== '/ics_accounts_test' || url.username !== 'accounts_test_admin'
     || !url.password || url.search !== '' || url.hash !== ''
     || raw.includes('?') || raw.includes('#')) {
-    throw new Error('Integración bloqueada: solo se permite el destino PostgreSQL local exclusivo de HU-02.');
+    throw new Error('Integración bloqueada: solo se permite el destino PostgreSQL local exclusivo de cuentas.');
   }
   let password: string;
   try { password = decodeURIComponent(url.password); } catch { throw new Error('Credencial de prueba inválida.'); }
   // Configuración explícita: tampoco se heredan host, opciones o SSL de variables PG*.
   return {
-    host: '127.0.0.1', port: 55432, database: 'ics_hu02_test', user: 'hu02_test_admin', password,
+    host: '127.0.0.1', port: 55432, database: 'ics_accounts_test', user: 'accounts_test_admin', password,
     ssl: false as const, options: '-c search_path=public',
-    application_name: 'hu02-isolated-integration', connectionTimeoutMillis: 5000,
+    application_name: 'accounts-isolated-integration', connectionTimeoutMillis: 5000,
   };
 }
 
@@ -71,8 +68,8 @@ export async function openPostgresFixture() {
     const schema = await readFile(accountsMigration, 'utf8');
     await observer.query('BEGIN');
     await observer.query(schema);
-    await observer.query('INSERT INTO public.universities (id, name) VALUES ($1::uuid, $2)',
-      [testUniversity.id, testUniversity.name]);
+    await observer.query(`INSERT INTO public.universities (id, name)
+      SELECT id::uuid, name FROM jsonb_to_recordset($1::jsonb) AS u(id text, name text)`, [JSON.stringify(universities)]);
     await observer.query('COMMIT');
 
     const { PrismaClient } = await import('../../src/generated/prisma/client.js');

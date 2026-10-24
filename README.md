@@ -20,7 +20,7 @@ ICS-Biblioteca/
 └── package-lock.json  # Resolución de dependencias de todo el repositorio
 ```
 
-Cada aplicación mantiene sus dependencias en su propio `package.json`. La instalación se administra desde la raíz, con un único `package-lock.json`. Se compilan por workspace y se publican juntas: Express sirve la API y los archivos compilados de Angular, según el ADR vigente.
+Cada aplicación mantiene sus dependencias en su propio `package.json`. La instalación se administra desde la raíz, con un único `package-lock.json`. Las aplicaciones mantienen sus compilaciones separadas; según el ADR-0002 aceptado, en producción se publicarán juntas en un único Render Web Service.
 
 ## Preparación
 
@@ -79,9 +79,13 @@ neon deploy
 
 `config plan` muestra los cambios antes de aplicarlos. `deploy` aplica `neon.ts` y descarga las variables en `.env.local` o `.env`, ambos ignorados por Git. Si los servicios ya están aprovisionados, basta con `neon env pull` para recuperar esas variables.
 
-Las credenciales de PostgreSQL y del bucket permanecen en el backend. [`.env.example`](.env.example) documenta los nombres sin valores reales. Esta puesta en marcha comprueba conectividad sin crear tablas de dominio; las migraciones corresponden a las historias siguientes.
+Las credenciales de PostgreSQL y del bucket permanecen en el backend. [`.env.example`](.env.example) documenta los nombres sin valores reales. El arranque comprueba servicios sin aplicar migraciones; las tablas de cuentas y catálogo se administran mediante las migraciones versionadas de sus historias.
 
 Las reglas de cupos, préstamos, reservas y vencimientos pertenecen al backend. La integración con el frontend se realizará mediante un contrato de API explícito.
+
+## Registro e inicio de sesión
+
+SCRUM-7 y SCRUM-8 comparten `backend/src/accounts/`, sesión opaca en cookie HttpOnly y estado Angular en memoria. Registro inicia sesión inmediatamente; ambos flujos reemplazan únicamente la sesión previa del navegador dentro de la misma transacción. La [guía de integración](docs/integracion-hu02-hu03.md) describe los módulos, las correcciones y la verificación aislada.
 
 ## Catálogo público
 
@@ -98,6 +102,9 @@ correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
 ## Documentación
 
 - [Vocabulario del dominio](CONTEXT.md).
-- [Propuesta de modelo de datos](docs/modelo-de-datos.md).
+- [Modelo de datos compartido en Confluence](https://joaquincastellano350.atlassian.net/wiki/spaces/SCRUM/pages/6389762) y [copia local sincronizada](docs/modelo-de-datos.md).
 - [Diagrama del modelo](docs/modelo-de-datos.mmd).
+- [Contrato de autenticación y sesión](docs/contrato-autenticacion.md).
+- [Desarrollo y verificación de SCRUM-8](docs/desarrollo-scrum-8.md).
+- [ADR-0002: origen web común aceptado](docs/adr/0002-sesion-y-origen-web.md).
 - [Registro de verificación de la puesta en marcha](docs/verificacion-inicial.md).

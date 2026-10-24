@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { createApp } from '../src/app.js';
-import type { University } from '../src/modules/accounts/universities.repository.js';
+import type { University } from '../src/accounts/universities.repository.js';
 
 test('GET /api/universities es público y conserva UUID, nombres y orden del repositorio', async (t) => {
   const universities: University[] = [
@@ -12,10 +12,10 @@ test('GET /api/universities es público y conserva UUID, nombres y orden del rep
   ];
   let calls = 0;
   const server = createApp({
-    checkDatabase: async () => { throw new Error('No debe comprobar disponibilidad global.'); },
-    checkStorage: async () => { throw new Error('Este endpoint no depende del almacenamiento.'); },
+    checkDatabase: async () => { throw Object.assign(new Error('No debe comprobar disponibilidad global.'), { code: 'P1001' }); },
+    checkStorage: async () => { throw Object.assign(new Error('Este endpoint no depende del almacenamiento.'), { code: 'P1001' }); },
     listUniversities: async () => { calls += 1; return universities; },
-    registrationService: { register: async () => { throw new Error('No debe registrar.'); } },
+    registrationService: { register: async () => { throw Object.assign(new Error('No debe registrar.'), { code: 'P1001' }); } },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
@@ -33,7 +33,7 @@ test('GET /api/universities devuelve 200 cuando la lista está vacía', async (t
     checkDatabase: async () => {},
     checkStorage: async () => {},
     listUniversities: async () => [],
-    registrationService: { register: async () => { throw new Error('No debe registrar.'); } },
+    registrationService: { register: async () => { throw Object.assign(new Error('No debe registrar.'), { code: 'P1001' }); } },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
@@ -49,8 +49,8 @@ test('GET /api/universities devuelve 503 sin revelar errores internos', async (t
   const server = createApp({
     checkDatabase: async () => {},
     checkStorage: async () => {},
-    listUniversities: async () => { throw new Error('detalle-interno-de-prueba'); },
-    registrationService: { register: async () => { throw new Error('No debe registrar.'); } },
+    listUniversities: async () => { throw Object.assign(new Error('detalle-interno-de-prueba'), { code: 'P1001' }); },
+    registrationService: { register: async () => { throw Object.assign(new Error('No debe registrar.'), { code: 'P1001' }); } },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
@@ -62,7 +62,7 @@ test('GET /api/universities devuelve 503 sin revelar errores internos', async (t
   assert.deepEqual(await response.json(), {
     error: {
       code: 'SERVICE_UNAVAILABLE',
-      message: 'No se pudieron consultar las facultades. Intentá nuevamente más tarde.',
+      message: 'El servicio no está disponible. Intentá nuevamente más tarde.',
     },
   });
 });

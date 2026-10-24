@@ -1,16 +1,16 @@
-import { generateSessionToken, hashPassword, hashSessionToken } from './registration.security.js';
+import { hashPassword } from './credentials.js';
+import { newSessionToken, tokenHash, validSessionToken, SESSION_DURATION_MS } from './sessions.js';
+import { AccountError } from './account-error.js';
+import { publicSession } from './auth.response.js';
+import type { AuthResponse } from './auth.response.js';
+import type { PublicUser } from './accounts.repository.js';
 import { validateRegistration } from './registration.validation.js';
 import type { RegistrationFields } from './registration.validation.js';
 
-export const REGISTRATION_SESSION_DURATION_MS = 6 * 60 * 60 * 1000;
+export { SESSION_DURATION_MS as REGISTRATION_SESSION_DURATION_MS } from './sessions.js';
+const REGISTRATION_SESSION_DURATION_MS = SESSION_DURATION_MS;
 
-export interface RegistrationPublicUser {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  university: { id: string; name: string };
-}
+export type RegistrationPublicUser = PublicUser;
 
 export interface AtomicRegistrationInput {
   firstName: string;
@@ -20,6 +20,7 @@ export interface AtomicRegistrationInput {
   passwordHash: string;
   tokenHash: string;
   sessionDurationMs: number;
+  previousTokenHash?: string;
 }
 
 export interface AtomicRegistrationResult {
@@ -42,7 +43,7 @@ export type RegistrationPersistenceCode =
   | 'EMAIL_ALREADY_REGISTERED'
   | 'DEPENDENCY_UNAVAILABLE';
 
-/** Contrato de errores del futuro adaptador; no transporta mensajes de PostgreSQL. */
+/** Contrato de errores del adaptador; no transporta mensajes de PostgreSQL. */
 export class RegistrationPersistenceError extends Error {
   constructor(public readonly code: RegistrationPersistenceCode) {
     super('No se pudo completar la operación de persistencia del registro.');
@@ -52,37 +53,25 @@ export class RegistrationPersistenceError extends Error {
 
 export type RegistrationErrorCode =
   | 'VALIDATION_ERROR'
-  | 'UNIVERSITY_NOT_FOUND'
   | 'EMAIL_ALREADY_REGISTERED'
   | 'SERVICE_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
-const errorMessages: Record<RegistrationErrorCode, string> = {
-  VALIDATION_ERROR: 'Revisá los datos ingresados.',
-  UNIVERSITY_NOT_FOUND: 'La facultad seleccionada no existe.',
-  EMAIL_ALREADY_REGISTERED: 'El correo electrónico ya está registrado.',
-  SERVICE_UNAVAILABLE: 'El servicio no está disponible. Intentá nuevamente más tarde.',
-  INTERNAL_ERROR: 'No se pudo completar el registro.',
-};
-
-export class RegistrationError extends Error {
+export class RegistrationError extends AccountError {
   constructor(
-    public readonly code: RegistrationErrorCode,
-    public readonly fields?: RegistrationFields,
+    code: RegistrationErrorCode,
+    fields?: RegistrationFields,
   ) {
-    super(errorMessages[code]);
+    super(code, fields);
     this.name = 'RegistrationError';
   }
 }
 
-export interface RegistrationPublicResponse {
-  user: RegistrationPublicUser;
-  session: { createdAt: string; expiresAt: string };
-  serverTime: string;
-}
+export type RegistrationPublicResponse = AuthResponse;
+export type RegistrationHandlerService = Pick<RegistrationService, 'register'>;
 
 export interface RegistrationResult {
-  /** Único contenido destinado al futuro cuerpo JSON HTTP. */
+  /** Único contenido destinado al cuerpo JSON HTTP. */
   publicResponse: RegistrationPublicResponse;
   /** Solo para emitir la cookie HttpOnly; nunca serializar dentro del JSON público. */
   cookie: { token: string; expiresAt: Date; maxAgeMs: number };
@@ -91,19 +80,20 @@ export interface RegistrationResult {
 export class RegistrationService {
   constructor(private readonly repository: RegistrationRepository) {}
 
-  async register(input: unknown): Promise<RegistrationResult> {
+  async register(input: unknown, previousToken?: unknown): Promise<RegistrationResult> {
     const validation = validateRegistration(input);
     if (!validation.valid) throw new RegistrationError('VALIDATION_ERROR', validation.fields);
 
     try {
       const { firstName, lastName, universityId, email, password } = validation.data;
       const passwordDigest = await hashPassword(password);
-      const token = generateSessionToken();
+      const token = newSessionToken();
       const result = await this.repository.createUserAndSession({
         firstName, lastName, universityId, email,
         passwordHash: passwordDigest,
-        tokenHash: hashSessionToken(token),
+        tokenHash: tokenHash(token),
         sessionDurationMs: REGISTRATION_SESSION_DURATION_MS,
+        ...(validSessionToken(previousToken) ? { previousTokenHash: tokenHash(previousToken) } : {}),
       });
 
       const createdAt = result.session.createdAt.getTime();
@@ -116,19 +106,8 @@ export class RegistrationService {
       }
 
       // Lista explícita: ni siquiera propiedades adicionales del adaptador llegan al JSON.
-      const user = result.user;
       return {
-        publicResponse: {
-          user: {
-            id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email,
-            university: { id: user.university.id, name: user.university.name },
-          },
-          session: {
-            createdAt: result.session.createdAt.toISOString(),
-            expiresAt: result.session.expiresAt.toISOString(),
-          },
-          serverTime: result.serverTime.toISOString(),
-        },
+        publicResponse: publicSession({ user: result.user, ...result.session }, result.serverTime),
         cookie: {
           token,
           expiresAt: new Date(expiresAt),
@@ -138,7 +117,7 @@ export class RegistrationService {
     } catch (error) {
       if (error instanceof RegistrationPersistenceError) {
         if (error.code === 'UNIVERSITY_NOT_FOUND') {
-          throw new RegistrationError('UNIVERSITY_NOT_FOUND', {
+          throw new RegistrationError('VALIDATION_ERROR', {
             universityId: 'Seleccioná una facultad existente.',
           });
         }

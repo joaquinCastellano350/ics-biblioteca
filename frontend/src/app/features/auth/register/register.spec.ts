@@ -5,6 +5,20 @@ import { InputText } from 'primeng/inputtext';
 import { Register, RegistrationRequest, RegistrationUniversity } from './register';
 
 describe('Register', () => {
+  it.each(['ana@bücher.de', 'iñaki@example.org', '\u00a0Ana@Example.org\u00a0'])(
+    'acepta el correo que admite la API y normaliza espacios exteriores: %s', (email) => {
+      component.form.setValue({ ...validRequest, email });
+      const emitted = vi.fn(); component.registerRequested.subscribe(emitted);
+      submitForm();
+      expect(component.form.valid).toBe(true);
+      expect(emitted).toHaveBeenCalledWith({ ...validRequest, email: email.trim().toLowerCase() });
+    },
+  );
+
+  it('rechaza el correo quoted con espacios antes del POST', () => {
+    component.form.setValue({ ...validRequest, email: '"ana test"@example.org' });
+    expect(component.form.controls.email.hasError('email')).toBe(true);
+  });
   let fixture: ComponentFixture<Register>;
   let component: Register;
   const universities: RegistrationUniversity[] = [

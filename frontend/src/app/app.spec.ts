@@ -8,6 +8,7 @@ import { filter, firstValueFrom } from 'rxjs';
 import { App } from './app';
 import { routes } from './app.routes';
 import { Register } from './features/auth/register/register';
+import { AuthService } from './auth/auth.service';
 
 describe('App', () => {
   let fixture: ComponentFixture<App>;
@@ -27,6 +28,7 @@ describe('App', () => {
     router = TestBed.inject(Router);
     http = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
+    http.expectOne('/api/auth/session').flush({}, { status: 401, statusText: 'Unauthorized' });
     await navigate('/');
   });
 
@@ -126,6 +128,8 @@ describe('App', () => {
     await navigation;
     await settleNavigation();
     expect(router.url).toBe('/catalogo');
+    expect(TestBed.inject(AuthService).status()).toBe('authenticated');
+    expect(TestBed.inject(AuthService).ensureAuthenticated()).toBe(true);
     expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Catálogo de libros');
     expect(fixture.nativeElement.querySelector('app-register')).toBeNull();
   });

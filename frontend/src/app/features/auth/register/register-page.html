@@ -30,7 +30,7 @@
         [universities]="universities()"
         [universitiesLoading]="universitiesLoading()"
         [universitiesError]="universitiesError()"
-        [loading]="submitting()"
+        [loading]="submitting() || auth.authenticating()"
         [submitDisabled]="registered()"
         [errorMessage]="registrationError()"
         [fieldErrors]="registrationFieldErrors()"

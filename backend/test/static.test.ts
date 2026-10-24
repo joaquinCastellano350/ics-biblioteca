@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createApp } from '../src/app.js';
-import { RegistrationError } from '../src/modules/accounts/registration.service.js';
+import { RegistrationError } from '../src/accounts/registration.service.js';
 
 test('Express sirve Angular en el origen de la API y conserva los 404 de API como JSON', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ics-static-'));
@@ -31,7 +31,9 @@ test('Express sirve Angular en el origen de la API y conserva los 404 de API com
     }
     const missing = await fetch(`${url}/api/inexistente`);
     assert.equal(missing.status, 404);
-    assert.deepEqual(await missing.json(), { error: 'NOT_FOUND' });
+    assert.deepEqual(await missing.json(), { error: {
+      code: 'NOT_FOUND', message: 'No se encontró el recurso.',
+    } });
     const catalog = await fetch(`${url}/api/books`);
     assert.equal(catalog.status, 200);
     assert.deepEqual(await catalog.json(), { books: [] });

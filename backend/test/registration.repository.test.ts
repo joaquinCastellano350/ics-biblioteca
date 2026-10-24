@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PostgresRegistrationRepository } from '../src/modules/accounts/registration.repository.js';
+import { PostgresRegistrationRepository } from '../src/accounts/registration.repository.js';
 import type {
   RegistrationDatabase, RegistrationSqlTransaction,
-} from '../src/modules/accounts/registration.repository.js';
+} from '../src/accounts/registration.repository.js';
 import {
   REGISTRATION_SESSION_DURATION_MS, RegistrationPersistenceError, RegistrationService,
-} from '../src/modules/accounts/registration.service.js';
-import type { AtomicRegistrationInput } from '../src/modules/accounts/registration.service.js';
+} from '../src/accounts/registration.service.js';
+import type { AtomicRegistrationInput } from '../src/accounts/registration.service.js';
 
 const input: AtomicRegistrationInput = {
   firstName: 'Ana', lastName: 'Pérez', email: ' ANA@EXAMPLE.ORG ',
@@ -46,8 +46,8 @@ function fakeDatabase(options: {
       if (sql.includes('FROM public.universities')) rows = options.universityMissing ? [] : [university];
       else if (sql.startsWith('SELECT clock_timestamp()')) rows = [{ now }];
       else if (sql.startsWith('INSERT INTO public.users')) rows = [{ ...user, passwordHash: 'extra-no-publicar' }];
-      else if (sql.startsWith('INSERT INTO public.sessions')) rows = [{
-        ...session, tokenHash: 'extra-no-publicar',
+      else if (sql.includes('INSERT INTO sessions')) rows = [{
+        ...session, id: 'sesion', revokedAt: null, user: { ...user, university },
         ...(options.invalidSession ? { expiresAt: now } : {}),
       }];
       else throw new Error('Consulta inesperada en la prueba.');
@@ -95,8 +95,7 @@ test('una transacción contiene comprobación, reloj y ambas inserciones paramet
   assert.deepEqual(userInsert.values.slice(1), [
     input.firstName, input.lastName, input.universityId, 'ana@example.org', input.passwordHash, now,
   ]);
-  assert.deepEqual(sessionInsert.values.slice(1), [userId, input.tokenHash, now, now]);
-  assert.match(sessionInsert.sql, /interval '6 hours'/);
+  assert.deepEqual(sessionInsert.values.slice(1), [userId, input.tokenHash, now, session.expiresAt]);
   for (const query of fake.queries) {
     assert.ok(Array.isArray(query.template.raw));
     assert.equal(query.sql.includes(input.passwordHash), false);
@@ -240,7 +239,7 @@ test('espera a que $transaction resuelva antes de devolver éxito', async () => 
 
 test('el servicio consume el repositorio simulado y conserva la clasificación de errores', async () => {
   const cases = [
-    [{ universityMissing: true }, 'UNIVERSITY_NOT_FOUND'],
+    [{ universityMissing: true }, 'VALIDATION_ERROR'],
     [{ failAt: 3, error: { code: '23505', constraint: 'users_email_key' } }, 'EMAIL_ALREADY_REGISTERED'],
     [{ transactionError: { code: 'P1001' } }, 'SERVICE_UNAVAILABLE'],
     [{ failAt: 4, error: new Error('interno') }, 'INTERNAL_ERROR'],

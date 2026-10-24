@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  isValidRegistrationPassword, MAX_PASSWORD_BYTES, normalizeEmail, validateRegistration,
-} from '../src/modules/accounts/registration.validation.js';
+import { validateRegistration } from '../src/accounts/registration.validation.js';
+import { validPassword as isValidRegistrationPassword, MAX_PASSWORD_BYTES, normalizeEmail } from '../src/accounts/credentials.js';
 
 const valid = {
   firstName: 'Ana', lastName: 'Pérez',

@@ -3,12 +3,13 @@ import { Buffer } from 'node:buffer';
 import { test } from 'node:test';
 import {
   REGISTRATION_SESSION_DURATION_MS, RegistrationError, RegistrationPersistenceError, RegistrationService,
-} from '../src/modules/accounts/registration.service.js';
+} from '../src/accounts/registration.service.js';
 import type {
   AtomicRegistrationInput, AtomicRegistrationResult, RegistrationErrorCode,
   RegistrationRepository,
-} from '../src/modules/accounts/registration.service.js';
-import { hashSessionToken, verifyPassword } from '../src/modules/accounts/registration.security.js';
+} from '../src/accounts/registration.service.js';
+import { tokenHash as hashSessionToken } from '../src/accounts/sessions.js';
+import { verifyPassword } from '../src/accounts/credentials.js';
 
 const valid = {
   firstName: 'Ana', lastName: 'Pérez',
@@ -156,7 +157,7 @@ test('facultad inexistente conserva un error tipado y señala universityId', asy
   const { service, calls } = fakeRepository(() => { throw new RegistrationPersistenceError('UNIVERSITY_NOT_FOUND'); });
   await assert.rejects(service.register(valid), (error: unknown) => {
     assert.ok(error instanceof RegistrationError);
-    assert.equal(error.code, 'UNIVERSITY_NOT_FOUND');
+    assert.equal(error.code, 'VALIDATION_ERROR');
     assert.equal(typeof error.fields?.universityId, 'string');
     return true;
   });
@@ -185,7 +186,7 @@ test('fallo inesperado se traduce sin exponer detalles, causa ni errores de infr
   await assert.rejects(service.register(valid), (error: unknown) => {
     assert.ok(error instanceof RegistrationError);
     assert.equal(error.code, 'INTERNAL_ERROR');
-    assert.equal(error.message, 'No se pudo completar el registro.');
+    assert.equal(error.message, 'No se pudo completar la operación.');
     assert.equal('cause' in error, false);
     assert.equal(JSON.stringify(error).includes('detalle-privado-de-conexion'), false);
     return true;
