@@ -3,10 +3,13 @@ import { BookController } from './book-controller.js';
 
 export function bookRoutes(controller: BookController) {
   const router = Router();
-  router.get('/', async (_request, response) => {
+  router.get('/', async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
     try {
-      response.json(await controller.findAll());
+      const rawAuthorIds = request.query['authorIds'];
+      const authorIds = (Array.isArray(rawAuthorIds) ? rawAuthorIds : [rawAuthorIds])
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
+      response.json(await controller.findAll({ ...(authorIds.length ? { authorIds } : {}) }));
     } catch {
       // No exponer mensajes de Prisma, SQL o credenciales de Neon.
       response.status(503).json({

@@ -7,6 +7,7 @@ import type { PublicUser } from './accounts/accounts.repository.js';
 import type { BookRepositoryInterface } from './book/book-repository-interface.js';
 import { BookController } from './book/book-controller.js';
 import { bookRoutes } from './book/book-routes.js';
+import { authorRoutes } from './book/author-routes.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -22,8 +23,17 @@ interface AppServices {
 export function createApp(services: AppServices) {
   const app = express();
   app.disable('x-powered-by');
-  if (services.books) app.use('/api/books', bookRoutes(new BookController(services.books)));
-  app.get('/api/health', (_request, response) => { response.json({ status: 'ok' }); });
+
+  if (services.books) {
+    const controller = new BookController(services.books);
+    app.use('/api/books', bookRoutes(controller));
+    app.use('/api/authors', authorRoutes(controller));
+  }
+
+  app.get('/api/health', (_request, response) => {
+    response.json({ status: 'ok' });
+  });
+
   app.get('/api/ready', async (_request, response) => {
     const [database, storage] = await Promise.allSettled([services.checkDatabase(), services.checkStorage()]);
     const ready = database.status === 'fulfilled' && storage.status === 'fulfilled';

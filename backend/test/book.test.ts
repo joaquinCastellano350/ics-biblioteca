@@ -45,7 +45,11 @@ test('el catálogo público conserva todos los libros y metadatos y oculta datos
       subjects: [{ id: 's3', name: 'Algoritmos' }],
     },
   ];
-  await withCatalog({ findAll: async () => books }, async (url) => {
+  let receivedCriteria: unknown;
+  await withCatalog({
+    findAll: async (criteria) => { receivedCriteria = criteria; return books; },
+    findAuthors: async (query) => query ? [{ id: 'a1', name: 'Ana' }] : [],
+  }, async (url) => {
     const response = await fetch(`${url}/api/books`);
     assert.equal(response.status, 200);
     const result = await response.json();
@@ -54,11 +58,17 @@ test('el catálogo público conserva todos los libros y metadatos y oculta datos
     assert.equal(result.books[0].subjects.length, 2);
     assert.ok(!JSON.stringify(result).includes('private.pdf'));
     assert.deepEqual(Object.keys(result.books[0]), ['id', 'title', 'authors', 'subjects']);
+    const filtered = await fetch(`${url}/api/books?authorIds=a1&authorIds=a3`);
+    assert.equal(filtered.status, 200);
+    assert.deepEqual(receivedCriteria, { authorIds: ['a1', 'a3'] });
+    const authors = await fetch(`${url}/api/authors?q=ana`);
+    assert.equal(authors.status, 200);
+    assert.deepEqual(await authors.json(), { authors: [{ id: 'a1', name: 'Ana' }] });
   });
 });
 
 test('un catálogo vacío es una colección válida, no un fallo', async () => {
-  await withCatalog({ findAll: async () => [] }, async (url) => {
+  await withCatalog({ findAll: async () => [], findAuthors: async () => [] }, async (url) => {
     const response = await fetch(`${url}/api/books`);
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { books: [] });
@@ -71,6 +81,7 @@ test('un error del repositorio devuelve 503 sin revelar detalles de Prisma o Neo
       findAll: async () => {
         throw new Error('credencial-secreta');
       },
+      findAuthors: async () => [],
     },
     async (url) => {
       const response = await fetch(`${url}/api/books`);
@@ -83,7 +94,7 @@ test('un error del repositorio devuelve 503 sin revelar detalles de Prisma o Neo
 });
 
 test('SCRUM-13 no expone escrituras ni una ficha de detalle', async () => {
-  await withCatalog({ findAll: async () => [] }, async (url) => {
+  await withCatalog({ findAll: async () => [], findAuthors: async () => [] }, async (url) => {
     const response = await fetch(`${url}/api/books`, { method: 'POST' });
     assert.equal(response.status, 405);
     assert.equal(response.headers.get('allow'), 'GET');
