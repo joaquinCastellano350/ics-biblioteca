@@ -18,7 +18,7 @@ Actualizado el 23 de octubre de 2026. Registro (SCRUM-7 / HU-02) y login (SCRUM-
 2. `auth/auth.validation.ts` usa la misma biblioteca y regla de correo que el backend. Registro y login conservan dominios internacionales; `inputmode="email"` mantiene el teclado apropiado sin transformar el correo. La normalización se aplica antes del POST, nunca a la contraseña.
 3. `auth/auth.service.ts` envía ambas escrituras y acepta el DTO antes de notificar el éxito a la pantalla. El servicio de transporte independiente de registro se eliminó. El token queda exclusivamente en la cookie HttpOnly.
 4. El bloqueo `authenticating` impide login y registro simultáneos en la misma aplicación y suspende la revalidación por foco. La generación de autenticación descarta GET antiguos, incluidos un 401 o la identidad anterior. El vencimiento de la sesión anterior no descarta el éxito de una autenticación pendiente. Cancelar o fallar libera el bloqueo; el fallo inicial permite reintentar la sesión.
-5. `features/auth/register/register-page.ts` llama a ese servicio y navega al terminar. `App` muestra la identidad y mantiene un único diálogo de login; el login conserva la ruta y el catálogo abierto. La raíz sigue redirigiendo al catálogo hasta incorporar la landing.
+5. `features/auth/register/register-page.ts` llama a ese servicio y navega al terminar. `App` mantiene un único diálogo de login y la restauración de sesión; la conexión de esos accesos y la identidad con la cabecera de SCRUM-6 queda para una PR de seguimiento. El servicio de login conserva la ruta y el catálogo abierto. Tras integrar SCRUM-6, la raíz muestra la landing; el registro exitoso vuelve a esa página.
 
 ## Verificación local
 
@@ -54,4 +54,4 @@ Después de ejecutarla, descartar esa base de prueba antes de repetir: la fixtur
 
 ## Límites
 
-Logout, protección de futuras operaciones personales y landing permanecen en sus historias. El bloqueo del cliente coordina una sola instancia de Angular; varias pestañas comparten cookie y se actualizan al revalidar, sin promesa de sincronización instantánea. El build conserva un aviso por exceder el presupuesto inicial de 500 kB; la compilación termina correctamente. No se publicaron comentarios ni cambios en GitHub.
+Logout y protección de futuras operaciones personales permanecen en sus historias. La landing y la navegación compartida se incorporan en SCRUM-6; sus accesos de cuenta, la identidad y el acceso a préstamos quedan para otra PR. El bloqueo del cliente coordina una sola instancia de Angular; varias pestañas comparten cookie y se actualizan al revalidar, sin promesa de sincronización instantánea. El build conserva un aviso por exceder el presupuesto inicial de 500 kB; la compilación termina correctamente. No se publicaron comentarios ni cambios en GitHub.

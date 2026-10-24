@@ -102,6 +102,7 @@ correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
 ## Documentación
 
 - [Vocabulario del dominio](CONTEXT.md).
+- [Landing e integración de navegación](docs/landing-integracion.md).
 - [Modelo de datos compartido en Confluence](https://joaquincastellano350.atlassian.net/wiki/spaces/SCRUM/pages/6389762) y [copia local sincronizada](docs/modelo-de-datos.md).
 - [Diagrama del modelo](docs/modelo-de-datos.mmd).
 - [Contrato de autenticación y sesión](docs/contrato-autenticacion.md).

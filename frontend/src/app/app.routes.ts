@@ -12,6 +12,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/register/register-page')
       .then((module) => module.RegisterPage),
   },
-  { path: '', pathMatch: 'full', redirectTo: 'catalogo' },
+  {
+    path: '',
+    pathMatch: 'full',
+    title: 'Inicio · Biblioteca Digital Universitaria',
+    loadComponent: () => import('./home/home-page').then((m) => m.HomePage),
+  },
   { path: '**', redirectTo: 'catalogo' },
 ];

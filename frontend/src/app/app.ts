@@ -1,12 +1,12 @@
 import { Component, inject } from '@angular/core';
-import { RouterLink, RouterOutlet } from '@angular/router';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './auth/auth.service';
 import { LoginDialog } from './auth/login-dialog';
 import { ButtonModule } from 'primeng/button';
 import { MessageModule } from 'primeng/message';
 
 @Component({
-  imports: [RouterLink, RouterOutlet, LoginDialog, ButtonModule, MessageModule],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, LoginDialog, ButtonModule, MessageModule],
   selector: 'app-root',
   styleUrl: './app.css',
   templateUrl: './app.html',
