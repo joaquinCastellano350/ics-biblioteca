@@ -3,10 +3,16 @@ import { join } from 'node:path';
 import type { BookRepositoryInterface } from './book/book-repository-interface.js';
 import { BookController } from './book/book-controller.js';
 import { bookRoutes } from './book/book-routes.js';
+import { createRegistrationRouter } from './modules/accounts/registration.controller.js';
+import type { RegistrationHandlerService } from './modules/accounts/registration.controller.js';
+import type { University } from './modules/accounts/universities.repository.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
   checkStorage: () => Promise<void>;
+  listUniversities: () => Promise<University[]>;
+  registrationService: RegistrationHandlerService;
+  production?: boolean;
   books?: BookRepositoryInterface;
   frontendDirectory?: string;
 }
@@ -25,8 +31,7 @@ export function createApp(services: AppServices) {
 
   app.get('/api/ready', async (_request, response) => {
     const [database, storage] = await Promise.allSettled([
-      services.checkDatabase(),
-      services.checkStorage(),
+      services.checkDatabase(), services.checkStorage(),
     ]);
     const ready = database.status === 'fulfilled' && storage.status === 'fulfilled';
     // No devolver errores de los proveedores: pueden contener credenciales.
@@ -37,6 +42,23 @@ export function createApp(services: AppServices) {
     });
   });
 
+  app.get('/api/universities', async (_request, response) => {
+    try {
+      const universities = await services.listUniversities();
+      response.json({ universities });
+    } catch {
+      response.status(503).json({
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'No se pudieron consultar las facultades. Intentá nuevamente más tarde.',
+        },
+      });
+    }
+  });
+
+  app.use('/api/auth/register', createRegistrationRouter(services.registrationService, services.production));
+
+  // Todas las rutas API deben quedar antes de su 404 y del fallback de Angular.
   app.use('/api', (_request, response) => {
     response.status(404).json({ error: 'NOT_FOUND' });
   });
@@ -52,6 +74,5 @@ export function createApp(services: AppServices) {
   app.use((_request, response) => {
     response.status(404).json({ error: 'NOT_FOUND' });
   });
-
   return app;
 }
