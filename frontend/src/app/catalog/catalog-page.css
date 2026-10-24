@@ -40,107 +40,40 @@ h1 {
   margin: -20px 0 32px;
 }
 .filter-control {
-  position: relative;
-}
-.filter-button {
-  min-width: 160px;
-  min-height: 43px;
   display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 10px 13px;
-  background: #f8f7f2;
-  border: 1px solid #e0e4da;
-  border-radius: 7px;
-  color: var(--bdu-ink);
-  font: inherit;
-  font-size: 0.8125rem;
-  text-align: left;
-  cursor: pointer;
-}
-.filter-button:hover,
-.filter-button.selected,
-.filter-button[aria-expanded='true'] {
-  border-color: #b9cc9e;
-  background: #edf3e2;
-}
-.filter-button:focus-visible,
-.filter-search:focus-visible,
-.filter-option input:focus-visible,
-.filter-footer button:focus-visible,
-.chip:focus-visible {
-  outline: 2px solid #8ba56b;
-  outline-offset: 2px;
-}
-.filter-count {
-  margin-left: auto;
-  padding: 1px 7px;
-  border-radius: 20px;
-  background: var(--bdu-ink);
-  color: #fff;
-  font-size: 0.6875rem;
-  line-height: 1.5;
-}
-.filter-menu {
-  position: absolute;
-  top: calc(100% + 7px);
-  left: 0;
-  z-index: 8;
+  flex-direction: column;
+  gap: 5px;
   width: min(310px, calc(100vw - 40px));
-  padding: 12px;
-  border: 1px solid var(--bdu-line);
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 15px 45px #122b3525;
 }
-.filter-search-label {
-  display: block;
-  margin-bottom: 5px;
+.filter-label {
   color: var(--bdu-muted);
   font-size: 0.72rem;
 }
-.filter-search {
+:host ::ng-deep .author-select {
   width: 100%;
-  min-height: 37px;
-  padding: 8px 10px;
-  border: 1px solid var(--bdu-line);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--bdu-text);
-  font: inherit;
-  font-size: 0.75rem;
+  min-height: 43px;
+  border-color: #e0e4da;
+  background: #f8f7f2;
+  font-size: 0.8125rem;
 }
-.filter-options {
-  max-height: 235px;
-  overflow: auto;
-  margin-top: 9px;
+:host ::ng-deep .author-select.p-select-open,
+:host ::ng-deep .author-select.p-focus {
+  border-color: #b9cc9e;
+  box-shadow: 0 0 0 2px #b9cc9e40;
 }
-.filter-option {
+:host ::ng-deep .p-select-overlay {
+  min-width: 100%;
+}
+.author-option {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 9px 4px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  line-height: 1.4;
-  cursor: pointer;
-}
-.filter-option:hover {
-  background: #f5f7f1;
-}
-.filter-option input {
-  flex-shrink: 0;
-}
-.filter-empty {
-  padding: 10px 4px;
-  color: var(--bdu-muted);
-  font-size: 0.75rem;
 }
 .filter-footer {
   display: flex;
   justify-content: space-between;
   margin-top: 5px;
-  padding-top: 8px;
+  padding: 8px 12px;
   border-top: 1px solid var(--bdu-line);
 }
 .filter-footer button {
@@ -152,6 +85,11 @@ h1 {
   font: inherit;
   font-size: 0.75rem;
   cursor: pointer;
+}
+.filter-footer button:focus-visible,
+.chip:focus-visible {
+  outline: 2px solid #8ba56b;
+  outline-offset: 2px;
 }
 .filter-footer .filter-done {
   background: var(--bdu-ink);
@@ -178,8 +116,7 @@ h1 {
 .chip span {
   font-size: 0.9rem;
   line-height: 1;
-}
-.catalog-meta {
+}.catalog-meta {
   padding-top: 23px;
   border-top: 1px solid var(--bdu-line);
   display: flex;
@@ -251,10 +188,6 @@ h1 {
   }
   .page-heading {
     margin-bottom: 28px;
-  }
-  .filter-menu {
-    left: 0;
-    right: auto;
   }
   .book-grid {
     grid-template-columns: minmax(0, 1fr);
