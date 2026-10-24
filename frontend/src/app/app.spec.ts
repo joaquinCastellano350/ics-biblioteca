@@ -67,22 +67,20 @@ describe('App', () => {
     expect(compiled.querySelector('h1')?.textContent).toContain('El conocimiento');
   });
 
-  it('mantiene el acceso de registro deshabilitado hasta la integración de cuentas', () => {
+  it('ofrece registro desde la cabecera y el hero de la landing', () => {
     const root = fixture.nativeElement as HTMLElement;
-    const register = Array.from(root.querySelectorAll<HTMLButtonElement>('.account-actions button'))
-      .find(button => button.textContent?.trim() === 'Crear cuenta');
-    expect(register?.disabled).toBe(true);
-    expect(root.querySelector('a[href="/registro"]')).toBeNull();
+    expect(root.querySelector('.account-actions a[href="/registro"]')?.textContent).toContain('Crear cuenta');
+    expect(root.querySelector('.hero-actions a[href="/registro"]')?.textContent).toContain('Crear mi cuenta');
   });
 
-  it('no navega al usar el acceso de registro pendiente', async () => {
+  it('abre el registro desde la cabecera', async () => {
     const root = fixture.nativeElement as HTMLElement;
-    const register = Array.from(root.querySelectorAll<HTMLButtonElement>('.account-actions button'))
-      .find(button => button.textContent?.trim() === 'Crear cuenta');
-    register!.click();
-    await fixture.whenStable();
-    expect(router.url).toBe('/');
-    expect(root.querySelector('app-register-page')).toBeNull();
+    const navigation = firstValueFrom(router.events.pipe(filter((event) => event instanceof NavigationEnd)));
+    root.querySelector<HTMLAnchorElement>('.account-actions a[href="/registro"]')!.click();
+    await navigation;
+    await settleNavigation();
+    expect(router.url).toBe('/registro');
+    expect(root.querySelector('app-register-page')).not.toBeNull();
   });
 
   it('permite abrir /registro directamente y enviar datos válidos con facultades disponibles', async () => {
@@ -132,6 +130,31 @@ describe('App', () => {
     expect(TestBed.inject(AuthService).ensureAuthenticated()).toBe(true);
     expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('El conocimiento');
     expect(fixture.nativeElement.querySelector('app-register')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.account-name')?.textContent).toContain('Hola, Ana');
+    expect(fixture.nativeElement.querySelector('a[href="/registro"]')).toBeNull();
+  });
+
+  it('presenta la cuenta restaurada y recupera los accesos cuando la sesión deja de ser válida', async () => {
+    const auth = TestBed.inject(AuthService);
+    auth.restore();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.account-actions button').disabled).toBe(true);
+    http.expectOne('/api/auth/session').flush({
+      user: { id: 'usuario', firstName: 'Ana', lastName: 'Pérez', email: 'ana@example.org',
+        university: { id: 'facultad', name: 'Facultad' } },
+      session: { createdAt: '2026-10-24T12:00:00Z', expiresAt: '2026-10-24T18:00:00Z' },
+      serverTime: '2026-10-24T12:00:00Z',
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.account-name')?.textContent).toContain('Hola, Ana');
+    expect(fixture.nativeElement.querySelector('.account-actions button')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.hero-actions a[href="/registro"]')).toBeNull();
+    auth.restore();
+    http.expectOne('/api/auth/session').flush({}, { status: 401, statusText: 'Unauthorized' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.account-name')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.account-actions button').disabled).toBe(false);
+    expect(fixture.nativeElement.querySelector('.hero-actions a[href="/registro"]')).not.toBeNull();
   });
 
   it('vuelve a la landing al usar Volver al inicio desde registro', async () => {
