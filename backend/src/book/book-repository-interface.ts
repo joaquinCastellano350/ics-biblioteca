@@ -6,5 +6,7 @@ export interface BookRepositoryInterface {
 }
 
 export interface BookSearchCriteria {
+  readonly title?: string;
   readonly authorIds?: readonly string[];
+  readonly subjectIds?: readonly string[];
 }

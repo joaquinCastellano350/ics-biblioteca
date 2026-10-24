@@ -8,6 +8,9 @@ import type { BookRepositoryInterface } from './book/book-repository-interface.j
 import { BookController } from './book/book-controller.js';
 import { bookRoutes } from './book/book-routes.js';
 import { authorRoutes } from './book/author-routes.js';
+import type { SubjectRepositoryInterface } from './subject/subject-repository-interface.js';
+import { SubjectController } from './subject/subject-controller.js';
+import { subjectRoutes } from './subject/subject-routes.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -17,6 +20,7 @@ interface AppServices {
   listUniversities?: () => Promise<PublicUser['university'][]>;
   production?: boolean;
   books?: BookRepositoryInterface;
+  subjects?: SubjectRepositoryInterface;
   frontendDirectory?: string;
 }
 
@@ -28,6 +32,9 @@ export function createApp(services: AppServices) {
     const controller = new BookController(services.books);
     app.use('/api/books', bookRoutes(controller));
     app.use('/api/authors', authorRoutes(controller));
+  }
+  if (services.subjects) {
+    app.use('/api/subjects', subjectRoutes(new SubjectController(services.subjects)));
   }
 
   app.get('/api/health', (_request, response) => {

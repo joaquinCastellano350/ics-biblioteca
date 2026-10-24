@@ -75,6 +75,29 @@ test('un catálogo vacío es una colección válida, no un fallo', async () => {
   });
 });
 
+test('books endpoint accepts title, author IDs, and repeated subject IDs', async () => {
+  let received: { title?: string; authorIds?: readonly string[]; subjectIds?: readonly string[] } | undefined;
+  await withCatalog({
+    findAll: async (criteria) => {
+      received = criteria;
+      return [];
+    },
+  }, async (url) => {
+    const response = await fetch(
+      `${url}/api/books?title=Redes&authorIds=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&subjectIds=11111111-1111-4111-8111-111111111111&subjectIds=22222222-2222-4222-8222-222222222222`,
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(received, {
+      title: 'Redes',
+      authorIds: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+      subjectIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+    });
+    const invalid = await fetch(`${url}/api/books?subjectIds=not-a-uuid`);
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(await invalid.json(), { error: { code: 'INVALID_QUERY' } });
+  });
+});
+
 test('un error del repositorio devuelve 503 sin revelar detalles de Prisma o Neon', async () => {
   await withCatalog(
     {

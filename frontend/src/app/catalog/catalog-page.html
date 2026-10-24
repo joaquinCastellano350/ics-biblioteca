@@ -5,86 +5,115 @@
       <h1>Catálogo de libros</h1>
       <p class="intro">Bibliografía para seguir construyendo tu formación.</p>
     </div>
-    <p class="public-note">
-      <span aria-hidden="true">↗</span> No necesitás una cuenta para explorar
-    </p>
+    <p class="public-note"><span aria-hidden="true">↗</span> No necesitás una cuenta para explorar</p>
   </header>
-  <section class="filter-wrap" aria-label="Filtros del catálogo">
-    <div class="filter-control">
-      <button
-        #authorToggle
-        class="filter-button"
-        [class.selected]="selectedAuthors().length > 0"
-        type="button"
-        aria-haspopup="dialog"
-        [attr.aria-expanded]="authorMenuOpen()"
-        aria-controls="author-filter-menu"
-        (click)="toggleAuthorMenu()"
-      >
-        Autores <span class="filter-count">{{ selectedAuthors().length }}</span>
-      </button>
-      @if (authorMenuOpen()) {
-        <div
-          id="author-filter-menu"
-          class="filter-menu"
-          role="dialog"
-          aria-label="Filtrar por autor"
-        >
-          <label class="filter-search-label" for="catalog-author-search">Buscar autores</label>
-          <input
-            #authorSearchInput
-            id="catalog-author-search"
-            class="filter-search"
-            type="search"
-            [value]="authorQuery()"
-            (input)="searchAuthors($any($event.target).value)"
-            placeholder="Buscar autores…"
-            autocomplete="off"
-          />
-          <div class="filter-options" role="group" aria-label="Autores disponibles">
-            @for (author of authorSuggestions(); track author.id) {
-              <label class="filter-option">
-                <input
-                  type="checkbox"
-                  [checked]="isDraftAuthorSelected(author.id)"
-                  (change)="toggleDraftAuthor(author, $any($event.target).checked)"
-                />
-                <span>{{ author.name }}</span>
-              </label>
-            } @empty {
-              <p class="filter-empty">No se encontraron autores</p>
-            }
+
+  <div class="catalog-tools" aria-label="Filtros del catálogo">
+    <section class="search-field" aria-label="Buscar libros por título">
+      <label class="visually-hidden" for="catalog-title-search">Buscar por título</label>
+      <p-iconfield class="search-input">
+        <p-inputicon><i class="pi pi-search" aria-hidden="true"></i></p-inputicon>
+        <input id="catalog-title-search" pInputText type="search" autocomplete="off"
+          placeholder="Buscar por título del libro…" [value]="titleQuery()"
+          (input)="searchByTitle($any($event.target).value)" />
+      </p-iconfield>
+    </section>
+
+    <section class="author-filter" aria-label="Filtro por autor">
+      <div class="filter-control">
+        <button #authorToggle class="filter-button" [class.selected]="selectedAuthors().length > 0"
+          type="button" aria-haspopup="dialog" [attr.aria-expanded]="authorMenuOpen()"
+          aria-controls="author-filter-menu" (click)="toggleAuthorMenu()">
+          Autores <span class="filter-count">{{ selectedAuthors().length }}</span>
+          <i class="pi pi-chevron-down filter-chevron" aria-hidden="true"></i>
+        </button>
+        @if (authorMenuOpen()) {
+          <div id="author-filter-menu" class="filter-menu" role="dialog" aria-label="Filtrar por autor">
+            <label class="filter-search-label" for="catalog-author-search">Buscar autores</label>
+            <input #authorSearchInput id="catalog-author-search" class="filter-search" type="search"
+              [value]="authorQuery()" (input)="searchAuthors($any($event.target).value)"
+              placeholder="Buscar autores…" autocomplete="off" />
+            <div class="filter-options" role="group" aria-label="Autores disponibles">
+              @for (author of authorSuggestions(); track author.id) {
+                <label class="filter-option">
+                  <p-checkbox [binary]="true" [ngModel]="isDraftAuthorSelected(author.id)"
+                    [ngModelOptions]="{ standalone: true }"
+                    (ngModelChange)="toggleDraftAuthor(author, $event)" />
+                  <span>{{ author.name }}</span>
+                </label>
+              } @empty {
+                <p class="filter-empty">No se encontraron autores</p>
+              }
+            </div>
+            <footer class="filter-footer">
+              <button class="filter-clear" type="button" (click)="clearDraftAuthors()">Limpiar</button>
+              <button class="filter-done" type="button" (click)="applyAuthorMenu()">Listo</button>
+            </footer>
           </div>
-          <footer class="filter-footer">
-            <button class="filter-clear" type="button" (click)="clearDraftAuthors()">Limpiar</button>
-            <button class="filter-done" type="button" (click)="applyAuthorMenu()">Listo</button>
-          </footer>
-        </div>
-      }
-    </div>
-    @if (selectedAuthors().length) {
-      <div class="selected-filters" aria-label="Filtros seleccionados">
-        @for (author of selectedAuthors(); track author.id) {
-          <button
-            class="chip"
-            type="button"
-            [attr.aria-label]="'Quitar filtro de autor ' + author.name"
-            (click)="removeSelectedAuthor(author.id)"
-          >
-            {{ author.name }} <span aria-hidden="true">×</span>
-          </button>
         }
       </div>
-    }
-  </section>
+      @if (selectedAuthors().length) {
+        <div class="selected-filters" aria-label="Autores seleccionados">
+          @for (author of selectedAuthors(); track author.id) {
+            <button class="chip" type="button" [attr.aria-label]="'Quitar filtro de autor ' + author.name"
+              (click)="removeSelectedAuthor(author.id)">{{ author.name }} <span aria-hidden="true">×</span></button>
+          }
+        </div>
+      }
+    </section>
+
+    <section class="subject-filter" aria-label="Filtro por materias">
+      <label class="visually-hidden" for="catalog-subject-filter">Filtrar por materias</label>
+      <p-select #subjectSelect class="subject-select" panelStyleClass="catalog-subject-overlay"
+        inputId="catalog-subject-filter" [options]="subjects()"
+        optionLabel="name" dataKey="id" [multiple]="true" [filter]="true" filterBy="name"
+        filterPlaceholder="Buscar materia…" emptyMessage="No hay materias disponibles."
+        emptyFilterMessage="No hay coincidencias."
+        [placeholder]="subjectsStatus() === 'loading' ? 'Cargando materias…' : 'Materias'"
+        [loading]="subjectsStatus() === 'loading'" [ngModel]="selectedSubjects()"
+        (ngModelChange)="updateSelectedSubjects($event)" [disabled]="subjectsStatus() !== 'ready'"
+        ariaLabel="Filtrar por materias">
+        <ng-template #selectedItem>
+          Materias@if (selectedSubjects().length) { ({{ selectedSubjects().length }}) }
+        </ng-template>
+        <ng-template #item let-subject>
+          <div class="subject-option">
+            <p-checkbox [binary]="true" [ngModel]="isSubjectSelected(subject)"
+              [ngModelOptions]="{ standalone: true }" [readonly]="true" aria-hidden="true" />
+            <span>{{ subject.name }}</span>
+          </div>
+        </ng-template>
+        <ng-template #footer>
+          <div class="filter-footer">
+            <button class="filter-clear" type="button" (click)="clearSubjectSelection()">Limpiar</button>
+            <button class="filter-done" type="button" (click)="closeSubjectSelector()">Listo</button>
+          </div>
+        </ng-template>
+      </p-select>
+      @if (selectedSubjects().length) {
+        <div class="selected-filters" aria-label="Materias seleccionadas">
+          @for (subject of selectedSubjects(); track subject.id) {
+            <button type="button" class="chip subject-chip" [attr.aria-label]="'Quitar materia ' + subject.name"
+              (click)="removeSubject(subject)">{{ subject.name }} <span aria-hidden="true">×</span></button>
+          }
+        </div>
+      }
+    </section>
+  </div>
+  @if (subjectsStatus() === 'error') {
+    <div class="subject-error" role="alert">
+      <span>No pudimos cargar las materias.</span>
+      <button pButton type="button" severity="secondary" (click)="loadSubjects()">Reintentar</button>
+    </div>
+  }
+  @if (subjectsStatus() === 'ready' && subjects().length === 0) {
+    <p class="subject-empty" role="status">No hay materias disponibles.</p>
+  }
   <section aria-label="Libros del catálogo" [attr.aria-busy]="status() === 'loading'">
     @switch (status()) {
       @case ('loading') {
         <div class="state-panel" role="status">
-          <p-progress-spinner
-            ariaLabel="Cargando catálogo"
-            [style]="{ width: '32px', height: '32px' }"
-          />
+          <p-progress-spinner ariaLabel="Cargando catálogo" [style]="{ width: '32px', height: '32px' }" />
           <p>Cargando el catálogo…</p>
         </div>
       }
@@ -93,34 +122,31 @@
           <span class="state-symbol" aria-hidden="true">!</span>
           <h2>No pudimos cargar el catálogo</h2>
           <p>Intentá nuevamente en unos instantes.</p>
-          <button pButton type="button" (click)="load()">
-            Volver a intentar <span aria-hidden="true">↗</span>
-          </button>
+          <button pButton type="button" (click)="load()">Volver a intentar <span aria-hidden="true">↗</span></button>
         </div>
       }
       @case ('ready') {
         <div class="catalog-meta" role="status">
-          <p>
-            <strong>{{ books().length }}</strong>
-            {{ books().length === 1 ? 'libro en el catálogo' : 'libros en el catálogo' }}
-          </p>
+          <p><strong>{{ books().length }}</strong>
+            {{ books().length === 1 ? 'libro en el catálogo' : 'libros en el catálogo' }}</p>
           <span>Exploración pública</span>
         </div>
         @if (books().length) {
           <div class="book-grid">
-            @for (book of books(); track book.id) {
-              <app-book-card [book]="book" />
-            }
+            @for (book of books(); track book.id) { <app-book-card [book]="book" /> }
+          </div>
+        } @else if (titleQuery().trim() || selectedAuthors().length || selectedSubjects().length) {
+          <div class="title-empty-state" role="status">
+            <i class="pi pi-search" aria-hidden="true"></i>
+            <h2>Sin resultados</h2>
+            <p>No encontramos libros con esta combinación. Probá con otro título o quitá algún filtro.</p>
+            <button pButton type="button" severity="secondary" (click)="clearFilters()">Limpiar búsqueda y materias</button>
           </div>
         } @else {
-          <div class="state-panel">
-            @if (selectedAuthors().length) {
-              <h2>Sin resultados</h2>
-            } @else {
-              <span class="state-symbol" aria-hidden="true">↗</span>
-              <h2>La biblioteca está preparando sus estantes</h2>
-              <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
-            }
+          <div class="state-panel" role="status">
+            <span class="state-symbol" aria-hidden="true">↗</span>
+            <h2>La biblioteca está preparando sus estantes</h2>
+            <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
           </div>
         }
       }

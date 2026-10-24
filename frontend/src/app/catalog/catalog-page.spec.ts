@@ -1,14 +1,45 @@
-import { provideHttpClient } from '@angular/common/http';
+﻿import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { By } from '@angular/platform-browser';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { Checkbox } from 'primeng/checkbox';
+import { Select } from 'primeng/select';
 import { CatalogPage } from './catalog-page';
 import { appConfig } from '../app.config';
+import type { CatalogTerm } from './book';
+
+const subjects: readonly CatalogTerm[] = [
+  { id: '11111111-1111-4111-8111-111111111111', name: 'Redes' },
+  { id: '22222222-2222-4222-8222-222222222222', name: 'Sistemas' },
+];
 
 function createCatalogFixture() {
   const fixture = TestBed.createComponent(CatalogPage);
   const http = TestBed.inject(HttpTestingController);
   fixture.detectChanges();
+  http.expectOne('/api/subjects').flush({ subjects: [] });
   return { fixture, http };
+}
+
+function flushInitialSubjectRequests(http: HttpTestingController): void {
+  http.expectOne('/api/books').flush({ books: [] });
+  http.expectOne('/api/subjects').flush({ subjects });
+}
+
+function openSubjectSelector(fixture: ComponentFixture<CatalogPage>): HTMLElement {
+  const root = fixture.nativeElement as HTMLElement;
+  const label = root.querySelector('p-select .p-select-label');
+  expect(label).not.toBeNull();
+  label?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  fixture.detectChanges();
+  return root;
+}
+
+function chooseSubject(root: HTMLElement, name: string): void {
+  const option = Array.from(root.querySelectorAll('.p-select-option'))
+    .find((candidate) => candidate.textContent?.includes(name));
+  expect(option).toBeDefined();
+  option?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 }
 
 function openAuthorMenu(fixture: ComponentFixture<CatalogPage>, http: HttpTestingController) {
@@ -33,6 +64,9 @@ function checkboxFor(fixture: ComponentFixture<CatalogPage>, name: string): HTML
 
 describe('Public catalog', () => {
   beforeEach(() => {
+    if (!HTMLElement.prototype.scrollIntoView) {
+      HTMLElement.prototype.scrollIntoView = () => {};
+    }
     TestBed.configureTestingModule({
       providers: [...appConfig.providers, provideHttpClient(), provideHttpClientTesting()],
     });
@@ -115,6 +149,7 @@ describe('Public catalog', () => {
     expect(fixture.nativeElement.textContent).toContain('Sin resultados');
     expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(2);
     expect(fixture.nativeElement.querySelector('.filter-count').textContent).toBe('2');
+    expect(fixture.nativeElement.querySelector('.filter-chevron.pi-chevron-down')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.filter-button').classList).toContain('selected');
 
     fixture.nativeElement.querySelector('.chip[aria-label="Quitar filtro de autor Ana"]').click();
@@ -243,8 +278,142 @@ describe('Public catalog', () => {
     fixture.detectChanges();
     const pendingAuthors = openAuthorMenu(fixture, http);
     const bookRequest = expectBooks(http);
+    const subjectsRequest = http.expectOne('/api/subjects');
     fixture.destroy();
     expect(bookRequest.cancelled).toBe(true);
     expect(pendingAuthors.cancelled).toBe(true);
+    expect(subjectsRequest.cancelled).toBe(true);
+  });
+
+  it('loads subjects independently and configures PrimeNG Select for searchable multiple selection', async () => {
+    const fixture = TestBed.createComponent(CatalogPage);
+    const http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    http.expectOne('/api/books').flush({ books: [] });
+    const subjectRequest = http.expectOne('/api/subjects');
+    expect(subjectRequest.request.method).toBe('GET');
+    subjectRequest.flush({ subjects });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = openSubjectSelector(fixture);
+    const select = fixture.debugElement.query(By.directive(Select)).componentInstance as Select;
+    expect(select.multiple()).toBe(true);
+    expect(select.filter()).toBe(true);
+    expect(select.optionLabel()).toBe('name');
+    expect(select.dataKey()).toBe('id');
+    expect(fixture.debugElement.query(By.directive(Checkbox))).not.toBeNull();
+    expect(root.textContent).not.toContain('Recientes');
+    expect(root.textContent).not.toContain('Mostrar lista completa');
+
+    const filter = root.querySelector('input.p-select-filter') as HTMLInputElement;
+    filter.value = 'sist';
+    filter.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    const options = Array.from(root.querySelectorAll('.p-select-option'));
+    expect(options).toHaveLength(1);
+    expect(options[0]?.textContent).toContain('Sistemas');
+    expect(options[0]?.querySelector('p-checkbox')).not.toBeNull();
+    expect(root.textContent).toContain('Limpiar');
+    expect(root.textContent).toContain('Listo');
+    expect(root.querySelector('.filter-clear')).not.toBeNull();
+    expect(root.querySelector('.filter-done')).not.toBeNull();
+    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+  });
+
+  it('combines title, author and multiple subject filters without discarding active criteria', async () => {
+    const fixture = TestBed.createComponent(CatalogPage);
+    const http = TestBed.inject(HttpTestingController);
+    flushInitialSubjectRequests(http);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = openSubjectSelector(fixture);
+    chooseSubject(root, 'Redes');
+    fixture.detectChanges();
+    const firstSubject = expectBooks(http);
+    expect(firstSubject.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id]);
+    firstSubject.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    chooseSubject(root, 'Sistemas');
+    fixture.detectChanges();
+    const multipleSubjects = expectBooks(http);
+    expect(multipleSubjects.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id, subjects[1]?.id]);
+    multipleSubjects.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const subjectChip = root.querySelector('[aria-label="Quitar materia Redes"]');
+    expect(subjectChip?.closest('.subject-filter')).not.toBeNull();
+    expect(subjectChip?.classList).toContain('chip');
+    expect(subjectChip?.querySelector('span[aria-hidden="true"]')?.textContent).toBe('×');
+    const subjectSelect = root.querySelector('p-select.subject-select');
+    expect(subjectSelect?.classList.contains('selected')).toBe(false);
+    expect(subjectSelect?.textContent).toContain('Materias');
+    expect(subjectSelect?.textContent).toContain('(2)');
+    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    fixture.detectChanges();
+
+    root.querySelector('.filter-button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+    http.expectOne('/api/authors').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    checkboxFor(fixture, 'Ana').click();
+    root.querySelector('.filter-done')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+    const withAuthor = expectBooks(http);
+    expect(withAuthor.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id, subjects[1]?.id]);
+    expect(withAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
+    withAuthor.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const title = root.querySelector('#catalog-title-search') as HTMLInputElement;
+    title.value = 'redes';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    const combined = expectBooks(http);
+    expect(combined.request.params.get('title')).toBe('redes');
+    expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
+    expect(combined.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id, subjects[1]?.id]);
+    combined.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    root.querySelector('[aria-label="Quitar materia Redes"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+    const afterRemoval = expectBooks(http);
+    expect(afterRemoval.request.params.get('title')).toBe('redes');
+    expect(afterRemoval.request.params.getAll('authorIds')).toEqual(['author-1']);
+    expect(afterRemoval.request.params.getAll('subjectIds')).toEqual([subjects[1]?.id]);
+    afterRemoval.flush({ books: [] });
+    await fixture.whenStable();
+  });
+
+  it('shows subject loading errors, retries, and distinguishes an empty independent subject list', async () => {
+    const fixture = TestBed.createComponent(CatalogPage);
+    const http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    http.expectOne('/api/books').flush({ books: [] });
+    const select = fixture.debugElement.query(By.directive(Select)).componentInstance as Select;
+    expect(select.loading()).toBe(true);
+    expect(select.disabled()).toBe(true);
+    http.expectOne('/api/subjects').flush({}, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('No pudimos cargar las materias');
+    root.querySelector('.subject-error button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    http.expectOne('/api/subjects').flush({ subjects: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.querySelector('[role="alert"]')).toBeNull();
+    expect(root.textContent).toContain('No hay materias disponibles');
+    expect(root.textContent).toContain('Todavía no hay libros cargados');
   });
 });

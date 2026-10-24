@@ -1,7 +1,20 @@
 # Catálogo público — SCRUM-13
 
-`GET /api/books` es público y devuelve todos los libros sin exigir sesión.
-No implementa búsqueda, filtros, disponibilidad ni acciones de circulación.
+`GET /api/books` es público y devuelve los libros sin exigir sesión. Acepta
+`title` para coincidencia parcial sin distinguir mayúsculas ni tildes, y uno o
+varios parámetros `subjectIds`. Si se reciben varias materias, alcanza con que
+el libro tenga una de ellas (OR); cuando también hay un título, ambos criterios
+se combinan (AND). Sin `subjectIds`, las materias no restringen el catálogo.
+No implementa disponibilidad ni acciones de circulación.
+
+También acepta uno o varios `authorIds`: con varios, basta con que el libro
+tenga cualquiera de esos autores (OR). Los criterios de título, autor y materia
+activos se combinan entre sí (AND). Sin IDs de autor o materia, esos criterios
+no restringen el catálogo.
+
+`GET /api/subjects` es público e independiente de los resultados de libros.
+Devuelve todas las materias de `subjects`, incluidas las que todavía no tienen
+libros, ordenadas por nombre e ID. No pagina ni limita esa lista.
 
 ```json
 {
@@ -13,6 +26,10 @@ No implementa búsqueda, filtros, disponibilidad ni acciones de circulación.
   }]
 }
 ```
+
+La respuesta de materias es `{"subjects":[{"id":"UUID","name":"Materia"}]}`.
+Una consulta combinada usa
+`/api/books?title=redes&authorIds=UUIDA&subjectIds=UUID1&subjectIds=UUID2`.
 
 Un catálogo vacío devuelve `{"books":[]}`. No se limita ni pagina la colección.
 Cada libro aparece una vez; conserva todos los autores y materias con sus IDs,
@@ -29,6 +46,10 @@ desbordarse, pero conservan los metadatos completos recibidos. No abren detalle.
 | `book-repository.ts` | Consulta Prisma, selección de campos y relaciones ordenadas. |
 | `book-controller.ts` | Preparación y lista explícita de campos de la respuesta pública. |
 | `book-routes.ts` | Adaptación HTTP y error recuperable sin detalles de proveedores. |
+
+`backend/src/subject/` contiene la lectura independiente de materias para el
+desplegable. Una falla devuelve 503 con `SUBJECTS_UNAVAILABLE` y no expone
+errores internos.
 
 El repositorio recibe el PrismaClient compartido de `database.ts`; no abre un
 pool adicional ni usa SQL manual para consultar libros. La entidad contiene

@@ -18,8 +18,8 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
     assert.deepEqual(await repository.findAll(), []);
     const book = await database.client.book.create({
       data: {
-        title: 'Redes',
-        titleSearch: 'redes',
+        title: 'Introducción a Redes',
+        titleSearch: 'introduccion a redes',
         pdfObjectKey: 'private/redes.pdf',
         totalCopies: 2,
         authors: {
@@ -33,6 +33,7 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
           create: [
             { subject: { create: { name: 'Sistemas' } } },
             { subject: { create: { name: 'Redes' } } },
+            { subject: { create: { name: 'Zoología avanzada' } } },
           ],
         },
       },
@@ -55,10 +56,31 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
     const zoe = authors.find(({ name }) => name === 'Zoe')!;
     const otherAuthor = authors.find(({ name }) => name === 'Otra autora')!;
     const booksByAnySelectedAuthor = await repository.findAll({ authorIds: [zoe.id, otherAuthor.id] });
-    assert.deepEqual(booksByAnySelectedAuthor.map(({ title }) => title), ['Algoritmos', 'Redes']);
-    assert.deepEqual((await repository.findAll({ authorIds: [zoe.id] })).map(({ title }) => title), ['Redes']);
+    assert.deepEqual(booksByAnySelectedAuthor.map(({ title }) => title), ['Algoritmos', 'Introducción a Redes']);
+    assert.deepEqual((await repository.findAll({ authorIds: [zoe.id] })).map(({ title }) => title), ['Introducción a Redes']);
     assert.deepEqual(await repository.findAll({ authorIds: [authorWithoutBooks.id] }), []);
     const books = await repository.findAll();
+    const networkSubject = await database.client.subject.findFirstOrThrow({ where: { name: 'Redes' } });
+    const algorithmSubject = await database.client.subject.findFirstOrThrow({ where: { name: 'Algoritmos' } });
+    const matchingEitherSubject = await repository.findAll({
+      subjectIds: [networkSubject.id, algorithmSubject.id],
+    });
+    assert.deepEqual(matchingEitherSubject.map(({ title }) => title), ['Algoritmos', 'Introducción a Redes']);
+    assert.deepEqual(
+      (await repository.findAll({ title: 'INTRODUCCION', subjectIds: [networkSubject.id] })).map(({ title }) => title),
+      ['Introducción a Redes'],
+    );
+    assert.deepEqual(
+      await repository.findAll({ title: 'INTRODUCCION', subjectIds: [algorithmSubject.id] }),
+      [],
+    );
+    const subjectBeyondShortCard = await database.client.subject.findFirstOrThrow({
+      where: { name: 'Zoología avanzada' },
+    });
+    const matchByLessVisibleSubject = await repository.findAll({ subjectIds: [subjectBeyondShortCard.id] });
+    assert.deepEqual(matchByLessVisibleSubject.map(({ title }) => title), ['Introducción a Redes']);
+    assert.ok(matchByLessVisibleSubject[0]?.subjects.some(({ id }) => id === subjectBeyondShortCard.id));
+    assert.deepEqual((await repository.findAll({ subjectIds: [] })).length, 2);
     assert.equal(books.length, 2);
     assert.equal(books[0]?.title, 'Algoritmos');
     const networks = books.find((entry) => entry.id === book.id)!;
@@ -69,7 +91,7 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
     assert.equal(new Set(networks.authors.map((author) => author.id)).size, 3);
     assert.deepEqual(
       networks.subjects.map((subject) => subject.name),
-      ['Redes', 'Sistemas'],
+      ['Redes', 'Sistemas', 'Zoología avanzada'],
     );
     assert.ok(!JSON.stringify(books).includes('private/'));
     await assert.rejects(

@@ -40,6 +40,10 @@ describe('App', () => {
       expect(request.request.method).toBe('GET');
       request.flush({ books: [] });
     }
+    for (const request of http.match('/api/subjects')) {
+      expect(request.request.method).toBe('GET');
+      request.flush({ subjects: [] });
+    }
     for (const request of http.match('/api/universities')) {
       expect(request.request.method).toBe('GET');
       request.flush({ universities: [

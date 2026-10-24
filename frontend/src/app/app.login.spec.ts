@@ -24,6 +24,7 @@ describe('integración de catálogo público y login', () => {
     http.expectOne('/api/books').flush({ books: [{
       id: 'libro', title: 'Álgebra', authors: [{ id: 'autor', name: 'Autora' }], subjects: [],
     }] });
+    http.expectOne('/api/subjects').flush({ subjects: [] });
     await fixture.whenStable();
     const root: HTMLElement = fixture.nativeElement;
     const book = root.querySelector('article');
