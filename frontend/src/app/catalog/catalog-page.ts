@@ -6,11 +6,13 @@ import type { Book } from './book';
 import { ButtonModule } from 'primeng/button';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { InputTextModule } from 'primeng/inputtext';
+import { IconFieldModule } from 'primeng/iconfield';
+import { InputIconModule } from 'primeng/inputicon';
 import { EMPTY, Subject, catchError, switchMap } from 'rxjs';
 
 @Component({
   selector: 'app-catalog-page',
-  imports: [BookCard, ButtonModule, ProgressSpinnerModule, InputTextModule],
+  imports: [BookCard, ButtonModule, ProgressSpinnerModule, InputTextModule, IconFieldModule, InputIconModule],
   templateUrl: './catalog-page.html',
   styleUrl: './catalog-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

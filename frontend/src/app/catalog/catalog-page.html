@@ -9,12 +9,14 @@
   </header>
   <section class="search-field" aria-label="Buscar libros por título">
     <label class="visually-hidden" for="catalog-title-search">Buscar por título</label>
-    <span class="search-input">
-      <i class="pi pi-search" aria-hidden="true"></i>
+    <p-iconfield class="search-input">
+      <p-inputicon>
+        <i class="pi pi-search" aria-hidden="true"></i>
+      </p-inputicon>
       <input id="catalog-title-search" pInputText type="search" autocomplete="off"
         placeholder="Buscar por título del libro…" [value]="titleQuery()"
         (input)="searchByTitle($any($event.target).value)" />
-    </span>
+    </p-iconfield>
   </section>
   <section aria-label="Libros del catálogo" [attr.aria-busy]="status() === 'loading'">
     @switch (status()) {
@@ -42,15 +44,20 @@
             @for (book of books(); track book.id) { <app-book-card [book]="book" /> }
           </div>
         } @else {
-          <div class="state-panel" role="status">
-            <span class="state-symbol" aria-hidden="true">↗</span>
             @if (titleQuery().trim()) {
-              <span>Sin resultados</span>
+              <div class="title-empty-state" role="status">
+                <i class="pi pi-search" aria-hidden="true"></i>
+                <h2>Sin resultados</h2>
+                <p>No encontramos libros con ese título. Probá con otro término.</p>
+                <button pButton type="button" severity="secondary" (click)="searchByTitle('')">Limpiar búsqueda</button>
+              </div>
             } @else {
-              <h2>La biblioteca está preparando sus estantes</h2>
-              <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
+              <div class="state-panel" role="status">
+                <span class="state-symbol" aria-hidden="true">↗</span>
+                <h2>La biblioteca está preparando sus estantes</h2>
+                <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
+              </div>
             }
-          </div>
         }
       }
     }
