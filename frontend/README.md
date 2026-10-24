@@ -26,7 +26,8 @@ en `127.0.0.1:4200`. Si se usa Chromium de Playwright, instalarlo con
 Verifican la landing, navegación, metadatos largos y estados del catálogo en
 escritorio, tablet y celular. Las capturas se guardan en
 `node_modules/.cache/playwright-results/`. Los accesos de cuenta están conectados;
-«Mis préstamos» permanece pendiente. Véase
+«Mis préstamos» tiene acceso y pantalla condicionada a la sesión; el listado y
+las operaciones permanecen pendientes. Véase
 [landing e integración](../docs/landing-integracion.md).
 
 En desarrollo, Angular escucha en el puerto 4200 y `proxy.conf.json` reenvía `/api/**` a Express en `http://127.0.0.1:3000`, conservando la ruta completa. Por ejemplo, `/api/ready` llega a la misma ruta de la API. Iniciar Express en otra terminal con `npm run dev --workspace backend`.
@@ -47,7 +48,7 @@ La comprobación de sesión se repite al recuperar foco cuando hay una sesión a
 
 ## Integración con SCRUM-6
 
-La raíz contiene la cabecera y el pie de SCRUM-6, `<router-outlet />` y la infraestructura de sesión compartida: restauración al arrancar, reintento y un único `<app-login-dialog />`. «Ingresar» abre ese diálogo sobre la página actual; «Crear cuenta» y «Crear mi cuenta» abren `/registro`. La cabecera muestra la identidad de la sesión y retira los accesos de cuenta, también en el hero. El registro exitoso vuelve a la landing con la sesión iniciada. «Mis préstamos» permanece pendiente. El salto al contenido enfoca el `<main>` de landing, catálogo o registro conservando la ruta.
+La raíz contiene la cabecera y el pie de SCRUM-6, `<router-outlet />` y la infraestructura de sesión compartida: restauración al arrancar, reintento y un único `<app-login-dialog />`. «Ingresar» abre ese diálogo sobre la página actual; «Crear cuenta» y «Crear mi cuenta» abren `/registro`. La cabecera muestra la identidad de la sesión y retira los accesos de cuenta, también en el hero. El registro exitoso vuelve a la landing con la sesión iniciada. «Mis préstamos» abre `/prestamos`: espera la comprobación de sesión, ofrece login y registro al visitante y muestra la sección en preparación al autenticar. Su listado y operaciones siguen pendientes; no se consultan ni simulan datos de préstamos. El salto al contenido enfoca el `<main>` de la ruta actual sin navegar al inicio.
 
 Para conectar el acceso de inicio de sesión, importar `AuthService`, inyectarlo en la pantalla o el encabezado e importar `ButtonModule` de PrimeNG:
 

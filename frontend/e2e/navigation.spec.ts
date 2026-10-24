@@ -11,7 +11,7 @@ test('landing y navegación pública sin placeholders', async ({ page }, testInf
   await expect(page.getByRole('link', { name: 'Saltar al contenido' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('main')).toBeFocused();
-  await expect(page.getByRole('button', { name: 'Mis préstamos', exact: true })).toBeDisabled();
+  await expect(page.getByRole('link', { name: 'Mis préstamos', exact: true })).toHaveAttribute('href', '/prestamos');
   await expect(page.getByRole('button', { name: 'Ingresar', exact: true })).toBeEnabled();
   await expect(page.getByRole('link', { name: 'Crear cuenta', exact: true })).toHaveAttribute('href', '/registro');
   await expect(page.getByRole('link', { name: 'Crear mi cuenta', exact: true })).toHaveAttribute('href', '/registro');

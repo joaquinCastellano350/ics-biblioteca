@@ -17,7 +17,7 @@
         >Inicio</a
       >
       <a routerLink="/catalogo" routerLinkActive="active" ariaCurrentWhenActive="page">Catálogo</a>
-      <button pButton variant="text" disabled type="button">Mis préstamos</button>
+      <a routerLink="/prestamos" routerLinkActive="active" ariaCurrentWhenActive="page">Mis préstamos</a>
     </nav>
     <div class="account-actions">
       @if (auth.session(); as session) {

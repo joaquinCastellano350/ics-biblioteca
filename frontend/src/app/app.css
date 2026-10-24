@@ -81,12 +81,6 @@
   position: relative;
   white-space: nowrap;
 }
-.main-nav button {
-  font-size: 0.8rem;
-  white-space: nowrap;
-  padding-inline: 0;
-  min-height: 44px;
-}
 .main-nav a:hover {
   color: var(--bdu-ink);
 }
