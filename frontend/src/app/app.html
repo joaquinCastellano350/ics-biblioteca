@@ -22,6 +22,9 @@
     <div class="account-actions">
       @if (auth.session(); as session) {
         <span class="account-name" aria-live="polite">Hola, {{ session.user.firstName }}</span>
+        <p-button label="Cerrar sesión" variant="outlined" type="button" (onClick)="logout()"
+          [loading]="auth.loggingOut()" [disabled]="auth.authenticating()"
+          [pt]="{ root: { 'aria-busy': auth.loggingOut() } }" />
       } @else {
         <button pButton variant="text" type="button" (click)="auth.openLogin()"
           [disabled]="auth.status() === 'loading' || auth.authenticating()"
@@ -31,6 +34,9 @@
     </div>
   </div>
 </header>
+@if (logoutError()) {
+  <p-message severity="error">{{ logoutError() }}</p-message>
+}
 @if (auth.status() === 'unavailable') {
   <p-message severity="error">No pudimos comprobar tu sesión.
     <p-button label="Reintentar sesión" variant="text" (onClick)="auth.restore()" [disabled]="auth.authenticating()" />

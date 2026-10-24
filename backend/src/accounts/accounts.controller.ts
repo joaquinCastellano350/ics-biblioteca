@@ -36,6 +36,17 @@ export function accountsController(
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.get('X-Biblioteca-Request') !== '1') {
       return sendError(res, 403, 'REQUEST_NOT_ALLOWED', 'La solicitud no está permitida.');
     }
+    next();
+  });
+  // Logout no recibe JSON; conserva la protección de escritura y evita el parser.
+  if (accounts) router.post('/auth/logout', async (req, res) => {
+    await accounts.logout(req.cookies[SESSION_COOKIE]);
+    res.clearCookie(SESSION_COOKIE, {
+      httpOnly: true, secure: production, sameSite: 'lax', path: '/',
+    });
+    res.status(204).end();
+  });
+  router.use((req, res, next) => {
     if (req.method === 'POST' && !req.is('application/json')) {
       return sendError(res, 415, 'UNSUPPORTED_MEDIA_TYPE', 'Enviá los datos como JSON.');
     }
