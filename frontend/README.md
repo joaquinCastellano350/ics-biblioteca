@@ -55,4 +55,6 @@ El modal conserva sus dimensiones y los ajustes de PrimeNG dentro de `auth/`, si
 
 Las pruebas de `AuthService` verifican revalidación, vencimiento y respuestas fuera de orden; las del catálogo verifican su lectura pública y sus estados.
 
+`auth/login-dialog.spec.ts` prueba el diálogo real de PrimeNG y `AuthService` con HTTP simulado: errores 401 y 503, reintento, devolución de foco, limpieza del formulario y cierre con Cancelar, cruz o Escape, también con una petición pendiente. Estas pruebas no acceden a Neon.
+
 Administrar nuevas dependencias desde la raíz siguiendo el [README del repositorio](../README.md).
