@@ -37,6 +37,16 @@ export class PrismaAccountsRepository implements AccountsRepository {
     return { session, serverTime: row.serverTime };
   }
 
+  async revokeSession(hash: string): Promise<void> {
+    // Una sentencia atómica; el índice único del hash limita el cambio a una sesión.
+    // No renovar vencimientos ni sobrescribir la fecha de una revocación anterior.
+    await this.database.$executeRaw`
+      UPDATE public.sessions
+      SET revoked_at = clock_timestamp()::timestamptz(3)
+      WHERE token_hash = ${hash} AND revoked_at IS NULL
+    `;
+  }
+
   async listUniversities() {
     const rows = await this.database.university.findMany({ select: { id: true, name: true } });
     return rows.sort((a, b) => a.name.localeCompare(b.name, 'es') || a.id.localeCompare(b.id));
