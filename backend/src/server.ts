@@ -2,16 +2,25 @@ import { createApp } from './app.js';
 import { checkDatabase, database } from './database.js';
 import { serverPort } from './env.js';
 import { checkStorage, storage } from './storage.js';
-import { fileURLToPath } from 'node:url';
 import { AccountsService } from './accounts/accounts.service.js';
 import { PrismaAccountsRepository } from './accounts/prisma-accounts.repository.js';
+import { BookRepository } from './book/book-repository.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const port = serverPort();
 const production = process.env['NODE_ENV'] === 'production';
+const frontendDirectory = fileURLToPath(
+  new URL('../../frontend/dist/biblioteca/browser/', import.meta.url),
+);
 const server = createApp({
-  checkDatabase, checkStorage,
-  accounts: new AccountsService(new PrismaAccountsRepository(database)), production,
-  ...(production ? { frontendPath: fileURLToPath(new URL('../../frontend/dist/biblioteca/browser/', import.meta.url)) } : {}),
+  checkDatabase,
+  checkStorage,
+  accounts: new AccountsService(new PrismaAccountsRepository(database)),
+  production,
+  books: new BookRepository(database),
+  ...(production && existsSync(join(frontendDirectory, 'index.html')) ? { frontendDirectory } : {}),
 }).listen(port, () => {
   console.log(`API disponible en el puerto ${port}.`);
 });

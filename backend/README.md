@@ -49,10 +49,46 @@ Object Storage usa el SDK S3 con direccionamiento por ruta, requerido por Neon. 
 
 El [contrato de autenticación y sesión](../docs/contrato-autenticacion.md) define la integración compartida por SCRUM-7 a SCRUM-11. SCRUM-8 implementa `POST /api/auth/login`, `GET /api/auth/session` y la base pública `GET /api/universities`. Registro y logout quedan para sus historias. Con `NODE_ENV=production`, Express sirve el build de Angular después de las rutas `/api`, según ADR-0002. Compilar ambos workspaces con `npm run build` desde la raíz antes de arrancar.
 
+El esquema Prisma integra los modelos de universidades, usuarios y sesiones del
+equipo con las cinco tablas del catálogo: libros, autores, materias y sus dos
+relaciones. La migración de SCRUM-13 define sus PK, FK e índices, además del
+CHECK de cupos totales no negativos. No contiene carga inicial ni crea entidades
+de circulación. Las migraciones no se aplican al iniciar Express.
+
+El 22/10/2026 se aplicó la migración del catálogo a la rama `production` de Neon,
+conservando la migración de cuentas que ya estaba aplicada. Ver el
+[registro de aplicación y verificación](../docs/migracion-catalogo-neon.md).
+
 El esquema Prisma incluye `universities`, `users` y `sessions`, alineados con Confluence v4. La primera migración conserva un solo `email` normalizado y único, las FK y el vencimiento absoluto de seis horas. La sesión guarda solo el SHA-256 del token; las contraseñas usan Argon2id. Las tablas de circulación pertenecen a historias posteriores.
 
 El módulo `src/accounts/` se organiza en `accounts.controller.ts` (rutas, cookies, respuestas y errores HTTP), `accounts.service.ts` (validación y reglas de autenticación), `accounts.repository.ts` (contrato de persistencia) y `prisma-accounts.repository.ts` (consultas y transacciones con Prisma). El service depende del contrato, no de Prisma; define la duración mediante la constante compartida en `sessions.ts`. El repository obtiene el reloj de PostgreSQL y persiste las fechas dentro de la transacción. `server.ts` conecta esas dependencias.
 
 Las migraciones se versionan en `prisma/migrations/` y usan `DATABASE_URL_UNPOOLED`. `npm run db:migrate --workspace backend` aplica migraciones versionadas; `npm run db:seed --workspace backend` carga las treinta instituciones de SCRUM-7 con UUID estables y sin duplicarlas. La creación de cuentas corresponde al registro de SCRUM-7. Las pruebas de integración usan la configuración habitual de entorno y eliminan únicamente la cuenta y las sesiones que crean. Ver [la guía de SCRUM-8](../docs/desarrollo-scrum-8.md).
 
+Desde la raíz, `npm exec --workspace backend -- prisma migrate status` consulta
+el estado y `npm exec --workspace backend -- prisma migrate deploy` aplica las
+migraciones pendientes al destino de `DATABASE_URL_UNPOOLED`. Este último cambia
+la base configurada; comprobar la rama de Neon antes de ejecutarlo. Mantener el
+historial completo de las migraciones del equipo en cada checkout.
+
 Administrar nuevas dependencias desde la raíz siguiendo el [README del repositorio](../README.md).
+
+## Módulo de libros
+
+`src/book/book.ts` define la entidad completa y su proyección pública;
+`book-repository-interface.ts` define el contrato; `book-repository.ts` usa el
+cliente Prisma compartido; `book-controller.ts` prepara la respuesta pública y
+`book-routes.ts` expone `GET /api/books`. Esta lectura no recibe escrituras ni
+criterios de búsqueda que validar. Los requisitos de carga y circulación se
+implementarán en sus operaciones correspondientes.
+
+Las pruebas conservan las comprobaciones de readiness del scaffolding y agregan
+el endpoint y el recorrido Prisma/adaptador pg/PostgreSQL embebido. Las tablas y
+los datos de esas pruebas viven exclusivamente en memoria. No validan el acceso
+a la instancia real de Neon ni escriben en ella.
+
+Con `NODE_ENV=production`, `server.ts` detecta el build de Angular en
+`frontend/dist/biblioteca/browser` y Express lo sirve en el mismo origen que
+`/api`. Las rutas públicas de Angular
+se resuelven con `index.html`; una ruta API inexistente sigue devolviendo JSON
+404 y no recibe el HTML de la aplicación.

@@ -75,10 +75,17 @@ test('login y consulta conservan la respuesta pública y la cookie de seis horas
   const server = createApp({
     checkDatabase: async () => {}, checkStorage: async () => {},
     accounts: new AccountsService(repository), production: true,
+    books: { findAll: async () => [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }] },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
   await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const catalog = await fetch(`${base}/api/books`);
+  assert.equal(catalog.status, 200);
+  assert.deepEqual(await catalog.json(), {
+    books: [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }],
+  });
+  assert.equal((await fetch(`${base}/api/books`, { method: 'POST' })).status, 405);
   const login = await fetch(`${base}/api/auth/login`, {
     method: 'POST',
     headers: {
@@ -118,7 +125,7 @@ test('el origen común sirve la SPA sin convertir errores de API en HTML', async
   const folder = await mkdtemp(join(tmpdir(), 'biblioteca-spa-'));
   await writeFile(join(folder, 'index.html'), '<!doctype html><h1>Biblioteca de prueba</h1>');
   const server = createApp({
-    checkDatabase: async () => {}, checkStorage: async () => {}, frontendPath: folder,
+    checkDatabase: async () => {}, checkStorage: async () => {}, frontendDirectory: folder,
   }).listen(0, '127.0.0.1');
   t.after(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));

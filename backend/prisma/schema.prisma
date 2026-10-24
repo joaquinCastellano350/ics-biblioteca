@@ -44,3 +44,54 @@ model Session {
   @@index([expiresAt])
   @@map("sessions")
 }
+
+model Book {
+  id           String        @id @default(uuid()) @db.Uuid
+  title        String        @db.Text
+  titleSearch  String        @map("title_search") @db.Text
+  pdfObjectKey String        @map("pdf_object_key") @db.Text
+  totalCopies  Int           @map("total_copies")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  authors      BookAuthor[]
+  subjects     BookSubject[]
+
+  @@map("books")
+}
+
+model Author {
+  id    String       @id @default(uuid()) @db.Uuid
+  name  String       @db.Text
+  books BookAuthor[]
+
+  @@map("authors")
+}
+
+model Subject {
+  id    String        @id @default(uuid()) @db.Uuid
+  name  String        @db.Text
+  books BookSubject[]
+
+  @@map("subjects")
+}
+
+model BookAuthor {
+  bookId   String @map("book_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  book     Book   @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@id([bookId, authorId])
+  @@index([authorId, bookId])
+  @@map("book_authors")
+}
+
+model BookSubject {
+  bookId    String  @map("book_id") @db.Uuid
+  subjectId String  @map("subject_id") @db.Uuid
+  book      Book    @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@id([bookId, subjectId])
+  @@index([subjectId, bookId])
+  @@map("book_subjects")
+}

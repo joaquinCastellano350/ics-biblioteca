@@ -83,6 +83,18 @@ Las credenciales de PostgreSQL y del bucket permanecen en el backend. [`.env.exa
 
 Las reglas de cupos, préstamos, reservas y vencimientos pertenecen al backend. La integración con el frontend se realizará mediante un contrato de API explícito.
 
+## Catálogo público
+
+SCRUM-13 implementa `/catalogo` con PrimeNG y `GET /api/books` con Express y
+Prisma. El módulo `backend/src/book/` separa entidad, interfaz de repositorio,
+acceso a datos, controlador y rutas. Se conserva la conexión compartida a Neon.
+El [contrato del catálogo](docs/catalogo-api.md) detalla las tablas, la respuesta
+pública y los límites con las otras historias.
+
+La migración del catálogo está preparada en `backend/prisma/migrations/` y no
+contiene libros iniciales. Revisarla antes de aplicarla a la rama de Neon
+correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
+
 ## Documentación
 
 - [Vocabulario del dominio](CONTEXT.md).
