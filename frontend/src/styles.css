@@ -45,6 +45,9 @@ a {
 .p-button {
   font-size: 14px;
 }
+a.p-button {
+  text-decoration: none;
+}
 .p-dialog-mask {
   backdrop-filter: blur(3px);
 }

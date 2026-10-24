@@ -9,6 +9,8 @@ async function withCatalog(books: BookRepositoryInterface, check: (url: string) 
   const app = createApp({
     checkDatabase: async () => {},
     checkStorage: async () => {},
+    listUniversities: async () => [],
+    registrationService: { register: async () => { throw new Error('El catálogo no debe registrar usuarios.'); } },
     books,
   });
   const server = app.listen(0, '127.0.0.1');
