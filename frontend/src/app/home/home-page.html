@@ -10,7 +10,9 @@
       </p>
       <div class="hero-actions">
         <a pButton routerLink="/catalogo">Explorar catálogo <span aria-hidden="true">↗</span></a>
-        <button pButton variant="outlined" disabled type="button">Crear mi cuenta</button>
+        @if (!auth.session()) {
+          <a pButton variant="outlined" routerLink="/registro">Crear mi cuenta</a>
+        }
       </div>
       <p class="hero-note">
         <span aria-hidden="true">✓</span> Explorá el catálogo sin crear una cuenta.

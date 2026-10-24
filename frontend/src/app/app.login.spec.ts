@@ -30,7 +30,7 @@ describe('integración de catálogo público y login', () => {
     expect(book?.textContent).toContain('Álgebra');
     const auth = TestBed.inject(AuthService);
     expect(auth.status()).toBe('anonymous');
-    auth.openLogin();
+    root.querySelector<HTMLButtonElement>('.account-actions button')!.click();
     fixture.detectChanges();
     await fixture.whenStable();
     expect(root.querySelectorAll('[role="dialog"]').length).toBe(1);
@@ -52,6 +52,7 @@ describe('integración de catálogo público y login', () => {
     http.expectOne('/api/auth/login').flush(response);
     await fixture.whenStable();
     expect(auth.status()).toBe('authenticated');
+    expect(root.querySelector('.account-name')?.textContent).toContain('Hola, Estudiante');
     expect(root.querySelector('[role="dialog"]')).toBeNull();
     expect(root.querySelector('article')).toBe(book);
     expect(router.url).toBe('/catalogo?q=algebra');

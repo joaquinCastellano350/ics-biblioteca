@@ -81,12 +81,6 @@
   position: relative;
   white-space: nowrap;
 }
-.main-nav button {
-  font-size: 0.8rem;
-  white-space: nowrap;
-  padding-inline: 0;
-  min-height: 44px;
-}
 .main-nav a:hover {
   color: var(--bdu-ink);
 }
@@ -113,6 +107,10 @@
   padding: 10px 16px;
   font-size: 0.76rem;
   white-space: nowrap;
+}
+.account-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .site-footer {
   border-top: 1px solid var(--bdu-line);

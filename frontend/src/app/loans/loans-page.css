@@ -1,0 +1,67 @@
+.loans-page {
+  padding-block: 56px 72px;
+}
+.page-heading {
+  margin-bottom: 40px;
+}
+h1 {
+  margin-top: 16px;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+}
+.intro {
+  margin-top: 13px;
+  color: var(--bdu-muted);
+  font-size: 0.94rem;
+}
+.private-state {
+  max-width: 620px;
+  margin-inline: auto;
+  padding: 48px;
+  border: 1px solid var(--bdu-line);
+  border-radius: 14px;
+  background: #fff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.state-symbol {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e9eee5;
+  color: var(--bdu-ink);
+  font-size: 1.4rem;
+}
+h2 {
+  font-size: clamp(1.35rem, 3vw, 1.6rem);
+  line-height: 1.35;
+}
+.private-state p {
+  color: var(--bdu-muted);
+  font-size: 0.9rem;
+}
+.private-state .p-button {
+  min-height: 44px;
+  margin-top: 6px;
+}
+.private-state .register-invite {
+  font-size: 0.8rem;
+}
+.register-invite a {
+  font-weight: 650;
+}
+@media (max-width: 600px) {
+  .loans-page {
+    padding-block: 35px 45px;
+  }
+  .page-heading {
+    margin-bottom: 28px;
+  }
+  .private-state {
+    padding: 34px 22px;
+  }
+}

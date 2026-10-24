@@ -7,6 +7,11 @@ export const routes: Routes = [
     loadComponent: () => import('./catalog/catalog-page').then((m) => m.CatalogPage),
   },
   {
+    path: 'prestamos',
+    title: 'Mis préstamos · Biblioteca Digital Universitaria',
+    loadComponent: () => import('./loans/loans-page').then((m) => m.LoansPage),
+  },
+  {
     path: 'registro',
     title: 'Registro · Biblioteca Digital Universitaria',
     loadComponent: () => import('./features/auth/register/register-page')

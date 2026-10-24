@@ -25,8 +25,9 @@ en `127.0.0.1:4200`. Si se usa Chromium de Playwright, instalarlo con
 `npx playwright install chromium` y ejecutar con `PLAYWRIGHT_CHANNEL=chromium`.
 Verifican la landing, navegación, metadatos largos y estados del catálogo en
 escritorio, tablet y celular. Las capturas se guardan en
-`node_modules/.cache/playwright-results/`. Los accesos de cuenta y préstamos
-permanecen deshabilitados como en la PR #6. Véase
+`node_modules/.cache/playwright-results/`. Los accesos de cuenta están conectados;
+«Mis préstamos» tiene acceso y pantalla condicionada a la sesión; el listado y
+las operaciones permanecen pendientes. Véase
 [landing e integración](../docs/landing-integracion.md).
 
 En desarrollo, Angular escucha en el puerto 4200 y `proxy.conf.json` reenvía `/api/**` a Express en `http://127.0.0.1:3000`, conservando la ruta completa. Por ejemplo, `/api/ready` llega a la misma ruta de la API. Iniciar Express en otra terminal con `npm run dev --workspace backend`.
@@ -47,7 +48,7 @@ La comprobación de sesión se repite al recuperar foco cuando hay una sesión a
 
 ## Integración con SCRUM-6
 
-La raíz contiene la cabecera y el pie de SCRUM-6, `<router-outlet />` y la infraestructura de sesión existente de develop: restauración al arrancar, reintento y un único `<app-login-dialog />`. La landing está registrada en `app.routes.ts`; se conserva `/registro` y el catálogo público. Los accesos «Ingresar», «Crear cuenta», «Crear mi cuenta» y «Mis préstamos» siguen deshabilitados y la cabecera no muestra identidad. La conexión de cuentas se hará en una PR de seguimiento. El registro sigue disponible mediante su URL directa.
+La raíz contiene la cabecera y el pie de SCRUM-6, `<router-outlet />` y la infraestructura de sesión compartida: restauración al arrancar, reintento y un único `<app-login-dialog />`. «Ingresar» abre ese diálogo sobre la página actual; «Crear cuenta» y «Crear mi cuenta» abren `/registro`. La cabecera muestra la identidad de la sesión y retira los accesos de cuenta, también en el hero. El registro exitoso vuelve a la landing con la sesión iniciada. «Mis préstamos» abre `/prestamos`: espera la comprobación de sesión, ofrece login y registro al visitante y muestra la sección en preparación al autenticar. Su listado y operaciones siguen pendientes; no se consultan ni simulan datos de préstamos. El salto al contenido enfoca el `<main>` de la ruta actual sin navegar al inicio.
 
 Para conectar el acceso de inicio de sesión, importar `AuthService`, inyectarlo en la pantalla o el encabezado e importar `ButtonModule` de PrimeNG:
 
@@ -69,6 +70,6 @@ Las pruebas de `AuthService` verifican revalidación, vencimiento, respuestas fu
 
 `auth/login-dialog.spec.ts` prueba el diálogo real de PrimeNG y `AuthService` con HTTP simulado: errores 401 y 503, reintento, devolución de foco, limpieza del formulario y cierre con Cancelar, cruz o Escape, también con una petición pendiente. Estas pruebas no acceden a Neon.
 
-`npm run test:e2e --workspace frontend` ejecuta Playwright en escritorio, tablet y móvil usando Chrome instalado. Comprueba registro directo, navegación pública, cookie HttpOnly, recarga, catálogo y desbordamiento horizontal. El escenario que abre login desde la cabecera queda omitido explícitamente hasta habilitar ese acceso en la PR de seguimiento; sus pruebas unitarias siguen activas. Sus respuestas HTTP están simuladas: no ejecuta el backend ni escribe en Neon. Las pruebas SQL/HTTP del backend verifican por separado el comportamiento de persistencia. Ver [la integración de registro y login](../docs/integracion-hu02-hu03.md).
+`npm run test:e2e --workspace frontend` ejecuta Playwright en escritorio, tablet y móvil usando Chrome instalado. Comprueba registro desde la landing, login desde la cabecera, identidad, navegación pública, cookie HttpOnly, recarga, catálogo y desbordamiento horizontal. Sus respuestas HTTP están simuladas: no ejecuta el backend ni escribe en Neon. Las pruebas SQL/HTTP del backend verifican por separado el comportamiento de persistencia. Ver [la integración de registro y login](../docs/integracion-hu02-hu03.md).
 
 Administrar nuevas dependencias desde la raíz siguiendo el [README del repositorio](../README.md).

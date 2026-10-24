@@ -32,7 +32,9 @@ test('registro conserva password exacta, cookie y consulta de sesión al recarga
     }
     throw new Error(`API inesperada en la prueba: ${path}`);
   });
-  await page.goto('/registro');
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Crear mi cuenta', exact: true }).click();
+  await expect(page).toHaveURL(/\/registro$/);
   await page.getByLabel('Nombre', { exact: true }).fill('Ana');
   await page.getByLabel('Apellido', { exact: true }).fill('Pérez');
   const select = page.getByRole('combobox');
@@ -46,6 +48,8 @@ test('registro conserva password exacta, cookie y consulta de sesión al recarga
   await expect(page.getByLabel('Correo electrónico', { exact: true })).toHaveValue('ana@bücher.de');
   await page.locator('form').getByRole('button', { name: 'Crear cuenta', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText('Hola, Ana')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Crear mi cuenta', exact: true })).toHaveCount(0);
   expect(registrations).toBe(1);
   const cookie = (await page.context().cookies()).find(item => item.name === 'biblioteca_session');
   expect(cookie?.httpOnly).toBe(true);
@@ -54,12 +58,12 @@ test('registro conserva password exacta, cookie y consulta de sesión al recarga
   const restored = page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/session' && response.status() === 200);
   await page.reload();
   await restored;
+  await expect(page.getByText('Hola, Ana')).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toContainText('El conocimiento');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test('login informa el error y luego autentica sin cambiar la página ni su contenido', async ({ page }) => {
-  test.skip(true, 'El acceso al login de la cabecera se habilitará en la PR de seguimiento de SCRUM-6.');
   let logins = 0;
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
@@ -75,7 +79,7 @@ test('login informa el error y luego autentica sin cambiar la página ni su cont
   });
   await page.goto('/catalogo?q=algebra');
   const article = await page.getByRole('article').elementHandle();
-  const opener = page.getByRole('button', { name: 'Iniciar sesión', exact: true });
+  const opener = page.getByRole('button', { name: 'Ingresar', exact: true });
   await expect(opener).toBeEnabled(); await opener.click();
   const dialog = page.getByRole('dialog'); await expect(dialog).toBeVisible();
   await expect(page.getByLabel('Correo electrónico', { exact: true })).toBeFocused();
