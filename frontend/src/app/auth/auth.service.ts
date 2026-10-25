@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { EMPTY, defer, finalize, fromEvent, tap } from 'rxjs';
+import { EMPTY, Subject, defer, finalize, fromEvent, map, takeUntil, tap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AuthResponse, RegistrationRequest } from './auth.types';
 import { normalizeEmail } from './auth.validation';
@@ -12,11 +12,13 @@ export class AuthService {
   private generation = 0;
   private expiryGeneration = 0;
   private restoring = false;
+  private readonly logoutStarted = new Subject<void>();
   private expiryTimer: ReturnType<typeof setTimeout> | undefined;
   readonly session = signal<AuthResponse | null>(null);
   readonly status = signal<'loading' | 'anonymous' | 'authenticated' | 'unavailable'>('loading');
   readonly loginRequested = signal(false);
   readonly authenticating = signal(false);
+  readonly loggingOut = signal(false);
 
   constructor() {
     fromEvent(window, 'focus').pipe(takeUntilDestroyed()).subscribe(() => {
@@ -38,6 +40,7 @@ export class AuthService {
     }
     this.http.get<AuthResponse>('/api/auth/session').pipe(
       takeUntilDestroyed(this.destroyRef),
+      takeUntil(this.logoutStarted),
       finalize(() => { this.restoring = false; }),
     ).subscribe({
       next: (response) => {
@@ -62,6 +65,40 @@ export class AuthService {
     const { firstName, lastName, universityId, email, password } = data;
     return this.authenticate('/api/auth/register', {
       firstName, lastName, universityId, email: normalizeEmail(email), password,
+    });
+  }
+
+  logout() {
+    return defer(() => {
+      // Serializar las mutaciones: cancelar login/registro no revierte su Set-Cookie.
+      if (this.authenticating()) return EMPTY;
+      this.authenticating.set(true);
+      this.loggingOut.set(true);
+      this.generation += 1;
+      this.logoutStarted.next();
+      return this.http.post<void>('/api/auth/logout', null, {
+        headers: { 'X-Biblioteca-Request': '1' },
+        observe: 'response',
+      }).pipe(
+        takeUntilDestroyed(this.destroyRef),
+        tap((response) => {
+          if (response.status !== 204) throw new Error('No se confirmó el cierre de sesión.');
+          this.generation += 1;
+          this.expiryGeneration += 1;
+          clearTimeout(this.expiryTimer);
+          this.expiryTimer = undefined;
+          this.session.set(null);
+          this.status.set('anonymous');
+          this.loginRequested.set(false);
+        }),
+        map(() => undefined),
+        finalize(() => {
+          this.loggingOut.set(false);
+          this.authenticating.set(false);
+          // Una restauración inicial cancelada no debe dejar la aplicación cargando.
+          if (this.status() === 'loading') this.status.set('unavailable');
+        }),
+      );
     });
   }
 

@@ -44,5 +44,16 @@ export class AccountsService {
     return result;
   }
 
+  async logout(token: unknown): Promise<void> {
+    // Sin un token válido no hay una sesión identificable que revocar.
+    if (!validSessionToken(token)) return;
+    try {
+      await this.repository.revokeSession(tokenHash(token));
+    } catch {
+      // No confirmar el cierre cuando la persistencia no pudo confirmarlo.
+      throw new AccountError('SERVICE_UNAVAILABLE');
+    }
+  }
+
   universities() { return this.repository.listUniversities(); }
 }

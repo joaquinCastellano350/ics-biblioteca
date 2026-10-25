@@ -24,5 +24,7 @@ export interface AccountsRepository {
   findUser(email: string): Promise<{ id: string; passwordHash: string } | null>;
   createSession(input: CreateSessionInput): Promise<{ session: SessionRecord; serverTime: Date }>;
   findSession(hash: string): Promise<{ session: SessionRecord; serverTime: Date } | null>;
+  /** Revoca solo este hash; no modifica sesiones ya revocadas ni falla si no existe. */
+  revokeSession(tokenHash: string): Promise<void>;
   listUniversities(): Promise<{ id: string; name: string }[]>;
 }
