@@ -8,6 +8,26 @@ import { publicSession } from './auth.response.js';
 
 const SESSION_COOKIE = 'biblioteca_session';
 
+export interface SessionIdentity {
+  userId: string;
+  sessionId: string;
+  expiresAt: Date;
+}
+
+/** Usar antes de consultar datos personales o ejecutar una operación protegida. */
+export function requireSession(accounts: AccountsService): express.RequestHandler {
+  const router = express.Router();
+  router.use(cookieParser());
+  router.use(async (req, res: express.Response<unknown, { identity: SessionIdentity }>, next) => {
+    res.set('Cache-Control', 'no-store');
+    // La vigencia se consulta en PostgreSQL en cada petición; nunca se renueva.
+    const { session } = await accounts.requireSession(req.cookies[SESSION_COOKIE]);
+    res.locals.identity = { userId: session.user.id, sessionId: session.id, expiresAt: session.expiresAt };
+    next();
+  });
+  return router;
+}
+
 function sendError(res: express.Response, status: number, code: string, message: string) {
   res.status(status).json({ error: { code, message } });
 }
