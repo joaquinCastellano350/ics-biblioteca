@@ -78,7 +78,10 @@ test('login y consulta conservan la respuesta pública y la cookie de seis horas
   const server = createApp({
     checkDatabase: async () => {}, checkStorage: async () => {},
     accounts: new AccountsService(repository), production: true,
-    books: { findAll: async () => [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }] },
+    books: {
+      findAll: async () => [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }],
+      findAuthors: async () => [],
+    },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
   await once(server, 'listening');

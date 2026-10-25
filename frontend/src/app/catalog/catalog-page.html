@@ -5,50 +5,37 @@
       <h1>Catálogo de libros</h1>
       <p class="intro">Bibliografía para seguir construyendo tu formación.</p>
     </div>
-    <p class="public-note">
-      <span aria-hidden="true">↗</span> No necesitás una cuenta para explorar
-    </p>
+    <p class="public-note"><span aria-hidden="true">↗</span> No necesitás una cuenta para explorar</p>
   </header>
-  <section class="filter-wrap" aria-label="Filtros del catálogo">
+  <section class="search-field" aria-label="Buscar libros por título">
+    <label class="visually-hidden" for="catalog-title-search">Buscar por título</label>
+    <p-iconfield class="search-input">
+      <p-inputicon>
+        <i class="pi pi-search" aria-hidden="true"></i>
+      </p-inputicon>
+      <input id="catalog-title-search" pInputText type="search" autocomplete="off"
+        placeholder="Buscar por título del libro…" [value]="titleQuery()"
+        (input)="searchByTitle($any($event.target).value)" />
+    </p-iconfield>
+  </section>
+  <section class="filter-wrap" aria-label="Filtro por autor">
     <div class="filter-control">
-      <button
-        #authorToggle
-        class="filter-button"
-        [class.selected]="selectedAuthors().length > 0"
-        type="button"
-        aria-haspopup="dialog"
-        [attr.aria-expanded]="authorMenuOpen()"
-        aria-controls="author-filter-menu"
-        (click)="toggleAuthorMenu()"
-      >
+      <button #authorToggle class="filter-button" [class.selected]="selectedAuthors().length > 0"
+        type="button" aria-haspopup="dialog" [attr.aria-expanded]="authorMenuOpen()"
+        aria-controls="author-filter-menu" (click)="toggleAuthorMenu()">
         Autores <span class="filter-count">{{ selectedAuthors().length }}</span>
       </button>
       @if (authorMenuOpen()) {
-        <div
-          id="author-filter-menu"
-          class="filter-menu"
-          role="dialog"
-          aria-label="Filtrar por autor"
-        >
+        <div id="author-filter-menu" class="filter-menu" role="dialog" aria-label="Filtrar por autor">
           <label class="filter-search-label" for="catalog-author-search">Buscar autores</label>
-          <input
-            #authorSearchInput
-            id="catalog-author-search"
-            class="filter-search"
-            type="search"
-            [value]="authorQuery()"
-            (input)="searchAuthors($any($event.target).value)"
-            placeholder="Buscar autores…"
-            autocomplete="off"
-          />
+          <input #authorSearchInput id="catalog-author-search" class="filter-search" type="search"
+            [value]="authorQuery()" (input)="searchAuthors($any($event.target).value)"
+            placeholder="Buscar autores…" autocomplete="off" />
           <div class="filter-options" role="group" aria-label="Autores disponibles">
             @for (author of authorSuggestions(); track author.id) {
               <label class="filter-option">
-                <input
-                  type="checkbox"
-                  [checked]="isDraftAuthorSelected(author.id)"
-                  (change)="toggleDraftAuthor(author, $any($event.target).checked)"
-                />
+                <input type="checkbox" [checked]="isDraftAuthorSelected(author.id)"
+                  (change)="toggleDraftAuthor(author, $any($event.target).checked)" />
                 <span>{{ author.name }}</span>
               </label>
             } @empty {
@@ -63,16 +50,10 @@
       }
     </div>
     @if (selectedAuthors().length) {
-      <div class="selected-filters" aria-label="Filtros seleccionados">
+      <div class="selected-filters" aria-label="Autores seleccionados">
         @for (author of selectedAuthors(); track author.id) {
-          <button
-            class="chip"
-            type="button"
-            [attr.aria-label]="'Quitar filtro de autor ' + author.name"
-            (click)="removeSelectedAuthor(author.id)"
-          >
-            {{ author.name }} <span aria-hidden="true">×</span>
-          </button>
+          <button class="chip" type="button" [attr.aria-label]="'Quitar filtro de autor ' + author.name"
+            (click)="removeSelectedAuthor(author.id)">{{ author.name }} <span aria-hidden="true">×</span></button>
         }
       </div>
     }
@@ -81,10 +62,7 @@
     @switch (status()) {
       @case ('loading') {
         <div class="state-panel" role="status">
-          <p-progress-spinner
-            ariaLabel="Cargando catálogo"
-            [style]="{ width: '32px', height: '32px' }"
-          />
+          <p-progress-spinner ariaLabel="Cargando catálogo" [style]="{ width: '32px', height: '32px' }" />
           <p>Cargando el catálogo…</p>
         </div>
       }
@@ -93,34 +71,32 @@
           <span class="state-symbol" aria-hidden="true">!</span>
           <h2>No pudimos cargar el catálogo</h2>
           <p>Intentá nuevamente en unos instantes.</p>
-          <button pButton type="button" (click)="load()">
-            Volver a intentar <span aria-hidden="true">↗</span>
-          </button>
+          <button pButton type="button" (click)="load()">Volver a intentar <span aria-hidden="true">↗</span></button>
         </div>
       }
       @case ('ready') {
         <div class="catalog-meta" role="status">
-          <p>
-            <strong>{{ books().length }}</strong>
-            {{ books().length === 1 ? 'libro en el catálogo' : 'libros en el catálogo' }}
-          </p>
+          <p><strong>{{ books().length }}</strong> {{ books().length === 1 ? 'libro en el catálogo' : 'libros en el catálogo' }}</p>
           <span>Exploración pública</span>
         </div>
         @if (books().length) {
           <div class="book-grid">
-            @for (book of books(); track book.id) {
-              <app-book-card [book]="book" />
+            @for (book of books(); track book.id) { <app-book-card [book]="book" /> }
+          </div>
+        } @else if (titleQuery().trim() || selectedAuthors().length) {
+          <div class="title-empty-state" role="status">
+            <i class="pi pi-search" aria-hidden="true"></i>
+            <h2>Sin resultados</h2>
+            <p>{{ titleQuery().trim() ? 'No encontramos libros con ese título. Probá con otro término.' : 'No encontramos libros con los autores seleccionados.' }}</p>
+            @if (titleQuery().trim()) {
+              <button pButton type="button" severity="secondary" (click)="searchByTitle('')">Limpiar búsqueda</button>
             }
           </div>
         } @else {
-          <div class="state-panel">
-            @if (selectedAuthors().length) {
-              <h2>Sin resultados</h2>
-            } @else {
-              <span class="state-symbol" aria-hidden="true">↗</span>
-              <h2>La biblioteca está preparando sus estantes</h2>
-              <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
-            }
+          <div class="state-panel" role="status">
+            <span class="state-symbol" aria-hidden="true">↗</span>
+            <h2>La biblioteca está preparando sus estantes</h2>
+            <p>Todavía no hay libros cargados. Volvé a visitarnos pronto.</p>
           </div>
         }
       }

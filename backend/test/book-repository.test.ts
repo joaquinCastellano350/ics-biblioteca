@@ -54,12 +54,25 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
     assert.deepEqual(await repository.findAuthors('no existe'), []);
     const zoe = authors.find(({ name }) => name === 'Zoe')!;
     const otherAuthor = authors.find(({ name }) => name === 'Otra autora')!;
-    const booksByAnySelectedAuthor = await repository.findAll({ authorIds: [zoe.id, otherAuthor.id] });
-    assert.deepEqual(booksByAnySelectedAuthor.map(({ title }) => title), ['Algoritmos', 'Redes']);
+    assert.deepEqual(
+      (await repository.findAll({ authorIds: [zoe.id, otherAuthor.id] })).map(({ title }) => title),
+      ['Algoritmos', 'Redes'],
+    );
     assert.deepEqual((await repository.findAll({ authorIds: [zoe.id] })).map(({ title }) => title), ['Redes']);
     assert.deepEqual(await repository.findAll({ authorIds: [authorWithoutBooks.id] }), []);
+    await database.client.book.create({
+      data: { title: 'Introducci\u00f3n a la Ciencia', titleSearch: 'INCONSISTENTE', pdfObjectKey: 'test.pdf', totalCopies: 1 },
+    });
+    await database.client.book.create({
+      data: {
+        title: `Ping\u00fcino del a\u00f1o`,
+        titleSearch: 'intencionalmente-incorrecto',
+        pdfObjectKey: 'test-pinguino.pdf',
+        totalCopies: 1,
+      },
+    });
     const books = await repository.findAll();
-    assert.equal(books.length, 2);
+    assert.equal(books.length, 4);
     assert.equal(books[0]?.title, 'Algoritmos');
     const networks = books.find((entry) => entry.id === book.id)!;
     assert.deepEqual(
@@ -72,6 +85,19 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
       ['Redes', 'Sistemas'],
     );
     assert.ok(!JSON.stringify(books).includes('private/'));
+    assert.deepEqual((await repository.findAll({ title: 'INTRODUCCION A LA cien' })).map(({ title }) => title), ['Introducci\u00f3n a la Ciencia']);
+    assert.deepEqual((await repository.findAll({ title: 'introducci\u00f3n a la cien' })).map(({ title }) => title), ['Introducci\u00f3n a la Ciencia']);
+    assert.deepEqual((await repository.findAll({ title: 'red' })).map(({ title }) => title), ['Redes']);
+    assert.deepEqual((await repository.findAll({ title: 'PINGUINO DEL ANO' })).map(({ title }) => title), [`Ping\u00fcino del a\u00f1o`]);
+    assert.deepEqual((await repository.findAll({ title: 'ping\u00fcino del a\u00f1o' })).map(({ title }) => title), [`Ping\u00fcino del a\u00f1o`]);
+    assert.deepEqual((await repository.findAll({ title: 'ingui' })).map(({ title }) => title), [`Ping\u00fcino del a\u00f1o`]);
+    assert.deepEqual(await repository.findAll({ title: 'no existe' }), []);
+    assert.equal((await repository.findAll({ title: '   ' })).length, 4);
+    assert.deepEqual(
+      (await repository.findAll({ title: 'red', authorIds: [zoe.id] })).map(({ title }) => title),
+      ['Redes'],
+    );
+    assert.deepEqual(await repository.findAll({ title: 'algo', authorIds: [zoe.id] }), []);
     await assert.rejects(
       database.client.book.create({
         data: {

@@ -1,20 +1,19 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, Injector, ViewChild, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BookCard } from './book-card';
-import { CatalogService } from './catalog-service';
+import { CatalogService, type CatalogSearchCriteria } from './catalog-service';
 import type { Book } from './book';
 import { ButtonModule } from 'primeng/button';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
+import { InputTextModule } from 'primeng/inputtext';
+import { IconFieldModule } from 'primeng/iconfield';
+import { InputIconModule } from 'primeng/inputicon';
 import type { CatalogTerm } from './book';
 import { EMPTY, Subject, catchError, switchMap } from 'rxjs';
 
-interface CatalogSearchCriteria {
-  readonly authorIds?: readonly string[];
-}
-
 @Component({
   selector: 'app-catalog-page',
-  imports: [BookCard, ButtonModule, ProgressSpinnerModule],
+  imports: [BookCard, ButtonModule, ProgressSpinnerModule, InputTextModule, IconFieldModule, InputIconModule],
   templateUrl: './catalog-page.html',
   styleUrl: './catalog-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -24,6 +23,7 @@ export class CatalogPage {
   private readonly destroyRef = inject(DestroyRef);
   readonly books = signal<readonly Book[]>([]);
   readonly status = signal<'loading' | 'ready' | 'error'>('loading');
+  readonly titleQuery = signal('');
   readonly selectedAuthors = signal<readonly CatalogTerm[]>([]);
   readonly draftAuthors = signal<readonly CatalogTerm[]>([]);
   readonly authorSuggestions = signal<CatalogTerm[]>([]);
@@ -34,11 +34,11 @@ export class CatalogPage {
   private readonly injector = inject(Injector);
   private readonly host = inject(ElementRef<HTMLElement>);
   private criteria: CatalogSearchCriteria = {};
-  private readonly bookSearches = new Subject<CatalogSearchCriteria>();
+  private readonly searches = new Subject<CatalogSearchCriteria>();
   private readonly authorSearches = new Subject<string>();
 
   constructor() {
-    this.bookSearches.pipe(
+    this.searches.pipe(
       switchMap((criteria) => {
         this.status.set('loading');
         return this.catalog.findAll(criteria).pipe(
@@ -46,11 +46,10 @@ export class CatalogPage {
         );
       }),
       takeUntilDestroyed(this.destroyRef),
-    ).subscribe(({ books }) => {
-      this.books.set(books);
-      this.status.set('ready');
+    ).subscribe({
+      next: ({ books }) => { this.books.set(books); this.status.set('ready'); },
     });
-    this.bookSearches.next({});
+    this.searches.next({});
     this.authorSearches.pipe(
       switchMap((query) => this.catalog.searchAuthors(query).pipe(
         catchError(() => { this.authorSuggestions.set([]); return EMPTY; }),
@@ -81,14 +80,11 @@ export class CatalogPage {
   toggleDraftAuthor(author: CatalogTerm, checked: boolean): void {
     const selected = this.draftAuthors();
     this.draftAuthors.set(checked
-      ? [...selected, author]
+      ? [...selected.filter(({ id }) => id !== author.id), author]
       : selected.filter(({ id }) => id !== author.id));
   }
 
-  clearDraftAuthors(): void {
-    this.draftAuthors.set([]);
-  }
-
+  clearDraftAuthors(): void { this.draftAuthors.set([]); }
   isDraftAuthorSelected(authorId: string): boolean {
     return this.draftAuthors().some(({ id }) => id === authorId);
   }
@@ -118,19 +114,16 @@ export class CatalogPage {
     if (!this.authorMenuOpen()) return;
     const target = event.target;
     const filter = this.host.nativeElement.querySelector('.filter-wrap');
-    if (target instanceof Node && filter && !filter.contains(target)) {
-      this.closeAuthorMenu(false);
-    }
+    if (target instanceof Node && filter && !filter.contains(target)) this.closeAuthorMenu(false);
   }
 
   private setAppliedAuthors(authors: readonly CatalogTerm[]): void {
-    const selected = authors;
-    this.selectedAuthors.set(selected);
+    this.selectedAuthors.set([...authors]);
     const { authorIds: _previousAuthorIds, ...otherCriteria } = this.criteria;
-    this.criteria = selected.length
-      ? { ...otherCriteria, authorIds: selected.map(({ id }) => id) }
+    this.criteria = authors.length
+      ? { ...otherCriteria, authorIds: authors.map(({ id }) => id) }
       : otherCriteria;
-    this.bookSearches.next(this.criteria);
+    this.searches.next(this.criteria);
   }
 
   private closeAuthorMenu(restoreFocus = true): void {
@@ -139,8 +132,15 @@ export class CatalogPage {
     if (restoreFocus) this.authorToggle?.nativeElement.focus();
   }
 
+  searchByTitle(title: string): void {
+    this.titleQuery.set(title);
+    const { title: _previousTitle, ...otherCriteria } = this.criteria;
+    this.criteria = title.trim() ? { ...otherCriteria, title } : otherCriteria;
+    this.searches.next(this.criteria);
+  }
+
   load(): void {
     this.status.set('loading');
-    this.bookSearches.next(this.criteria);
+    this.searches.next(this.criteria);
   }
 }
