@@ -1,9 +1,9 @@
-import type { PrismaClient } from '../generated/prisma/client.js';
-import type { CatalogBook } from './book.js';
+import type { Prisma, PrismaClient } from '../generated/prisma/client.js';
+import type { CatalogBook, CatalogTerm } from './book.js';
 import type { BookRepositoryInterface, BookSearchCriteria } from './book-repository-interface.js';
 
 export class BookRepository implements BookRepositoryInterface {
-  constructor(private readonly database: Pick<PrismaClient, 'book' | '$queryRaw'>) {}
+  constructor(private readonly database: Pick<PrismaClient, 'book' | 'author' | '$queryRaw'>) {}
 
   async findAll(criteria: BookSearchCriteria = {}): Promise<readonly CatalogBook[]> {
     const title = criteria.title?.trim();
@@ -28,8 +28,13 @@ export class BookRepository implements BookRepositoryInterface {
         `
       : undefined;
     if (matchingIds?.length === 0) return [];
+    const authorIds = [...new Set(criteria.authorIds ?? [])];
+    const where: Prisma.BookWhereInput = {
+      ...(matchingIds ? { id: { in: matchingIds.map(({ id }) => id) } } : {}),
+      ...(authorIds.length ? { authors: { some: { authorId: { in: authorIds } } } } : {}),
+    };
     const rows = await this.database.book.findMany({
-      ...(matchingIds ? { where: { id: { in: matchingIds.map(({ id }) => id) } } } : {}),
+      ...(Object.keys(where).length ? { where } : {}),
       orderBy: [{ title: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
@@ -50,5 +55,14 @@ export class BookRepository implements BookRepositoryInterface {
       authors: authors.map(({ author }) => author),
       subjects: subjects.map(({ subject }) => subject),
     }));
+  }
+
+  async findAuthors(query = ''): Promise<readonly CatalogTerm[]> {
+    const search = query.trim();
+    return this.database.author.findMany({
+      ...(search ? { where: { name: { contains: search, mode: 'insensitive' } } } : {}),
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      select: { id: true, name: true },
+    });
   }
 }

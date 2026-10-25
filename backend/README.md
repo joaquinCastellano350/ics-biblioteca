@@ -43,9 +43,11 @@ npm run check:services
 
 La comprobación llama a `/api/ready`, carga un texto con clave aleatoria en `_connectivity-check/`, verifica su contenido, descarga mediante una URL firmada de 60 segundos y comprueba que la URL sin firma rechaza el acceso anónimo. Por último elimina el objeto temporal y comprueba su ausencia. Falla con código distinto de cero si falla cualquiera de estos pasos. `API_BASE_URL` permite cambiar la dirección de la API para esa comprobación.
 
-Object Storage usa el SDK S3 con direccionamiento por ruta, requerido por Neon. Este módulo permitirá integrar el acceso a PDFs mediante URLs firmadas cuando se implementen las reglas de préstamos; la puesta en marcha no implementa todavía lectura ni autenticación y no expone endpoints de subida o descarga.
+Object Storage usa el SDK S3 con direccionamiento por ruta, requerido por Neon. Este módulo permitirá integrar el acceso a PDFs mediante URLs firmadas cuando se implementen las reglas de préstamos; no expone endpoints de subida o descarga.
 
 ## Modelo de datos
+
+El [contrato de autenticación y sesión](../docs/contrato-autenticacion.md) define la integración compartida por SCRUM-7 a SCRUM-11. Registro y login exponen `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/session` y `GET /api/universities`. Logout sigue pendiente. Con `NODE_ENV=production`, Express sirve el build de Angular después de las rutas `/api`, según ADR-0002. Compilar ambos workspaces con `npm run build` desde la raíz antes de arrancar.
 
 El esquema Prisma integra los modelos de universidades, usuarios y sesiones del
 equipo con las cinco tablas del catálogo: libros, autores, materias y sus dos
@@ -57,7 +59,15 @@ El 22/10/2026 se aplicó la migración del catálogo a la rama `production` de N
 conservando la migración de cuentas que ya estaba aplicada. Ver el
 [registro de aplicación y verificación](../docs/migracion-catalogo-neon.md).
 
-Las migraciones posteriores se versionarán en `prisma/migrations/`, siguiendo [la propuesta de datos](../docs/modelo-de-datos.md). Usarán la conexión directa y deberán revisarse antes de aplicarse a la rama correspondiente.
+El esquema Prisma incluye `universities`, `users` y `sessions`, alineados con Confluence v4. La primera migración conserva un solo `email` normalizado y único, las FK y el vencimiento absoluto de seis horas. La sesión guarda solo el SHA-256 del token; las contraseñas usan Argon2id. Las tablas de circulación pertenecen a historias posteriores.
+
+El módulo único `src/accounts/` contiene registro y login. `accounts.controller.ts` reúne rutas, cookies y middleware HTTP; `accounts.service.ts` y `registration.service.ts` coordinan sus respectivos contratos de persistencia. Ambos usan `credentials.ts`, `sessions.ts`, `auth.response.ts` y `account-error.ts`. Los adaptadores Prisma llaman a `prisma-session.ts` dentro de su transacción: crear la sesión y revocar la anterior son atómicos; registro incluye además crear el usuario. El reloj de PostgreSQL determina las seis horas y el atributo `Expires` de la cookie. `server.ts` conecta ambos servicios a la misma base.
+
+`requireSession(accounts)`, exportado por `accounts.controller.ts`, valida la vigencia en cada petición antes del handler y expone solo la identidad comprobada en `res.locals.identity`. No renueva fechas y rechaza el instante exacto del vencimiento. Las futuras rutas personales deben utilizar esa identidad para consultar sus propios recursos; el middleware no sustituye la comprobación de titularidad de SCRUM-9. Ver [la guía de SCRUM-11 y sus pruebas](../docs/scrum-11-vencimiento-sesion.md).
+
+Las migraciones se versionan en `prisma/migrations/` y usan `DATABASE_URL_UNPOOLED`. `npm run db:migrate --workspace backend` aplica migraciones versionadas; `npm run db:seed --workspace backend` carga las treinta instituciones de SCRUM-7 con UUID estables y sin duplicarlas. La creación de cuentas corresponde al registro de SCRUM-7.
+
+`npm test --workspace backend` ejecuta pruebas de cuentas y catálogo sin acceder a Neon. Los escenarios HTTP de registro y login usan Prisma, el adaptador `pg` y PostgreSQL embebido en memoria (PGlite), incluidas concurrencia y reversión de transacciones. La misma suite puede ejecutarse con PostgreSQL externo mediante `npm run test:integration --workspace backend`: exige una base local nueva y vacía, `TEST_DATABASE_URL` explícita y `ACCOUNTS_ALLOW_INTEGRATION_WRITES=1`. Nunca carga la conexión habitual de desarrollo. Ver [la guía de integración](../docs/integracion-hu02-hu03.md) para preparar ese destino.
 
 Desde la raíz, `npm exec --workspace backend -- prisma migrate status` consulta
 el estado y `npm exec --workspace backend -- prisma migrate deploy` aplica las
@@ -81,7 +91,8 @@ el endpoint y el recorrido Prisma/adaptador pg/PostgreSQL embebido. Las tablas y
 los datos de esas pruebas viven exclusivamente en memoria. No validan el acceso
 a la instancia real de Neon ni escriben en ella.
 
-Después de compilar Angular, `server.ts` detecta `frontend/dist/biblioteca/browser`
-y Express lo sirve en el mismo origen que `/api`. Las rutas públicas de Angular
+Con `NODE_ENV=production`, `server.ts` detecta el build de Angular en
+`frontend/dist/biblioteca/browser` y Express lo sirve en el mismo origen que
+`/api`. Las rutas públicas de Angular
 se resuelven con `index.html`; una ruta API inexistente sigue devolviendo JSON
 404 y no recibe el HTML de la aplicación.

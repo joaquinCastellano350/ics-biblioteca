@@ -4,7 +4,9 @@ Biblioteca universitaria con catálogo público y préstamos digitales de duraci
 
 ## Lenguaje
 
-**Estudiante**: Persona registrada que puede solicitar préstamos y esperar libros. Su facultad es un dato de pertenencia, no una condición de acceso al catálogo.
+**Estudiante**: Persona registrada que puede solicitar préstamos y esperar libros. Su universidad es un dato de pertenencia, no una condición de acceso al catálogo.
+
+**Universidad**: Institución de la lista de registro a la que pertenece un estudiante.
 
 **Libro**: Entrada del catálogo que reúne un título, sus autores, sus materias y el documento digital que se presta.
 

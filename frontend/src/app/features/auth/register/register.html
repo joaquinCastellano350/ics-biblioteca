@@ -1,0 +1,114 @@
+<section class="registration" aria-labelledby="register-title">
+  <header>
+    <h1 id="register-title">Creá tu cuenta</h1>
+    <p class="intro">Completá tus datos para empezar.</p>
+  </header>
+
+  <form [formGroup]="form" (ngSubmit)="submit()" novalidate
+    [attr.aria-busy]="loading() || universitiesLoading()">
+    @if (errorMessage()) {
+      <p-message class="error-banner" severity="error" variant="simple" size="small"
+        role="alert" aria-live="polite" aria-atomic="true">{{ errorMessage() }}</p-message>
+    }
+
+    <fieldset [disabled]="loading() || universitiesLoading()">
+      <legend class="sr-only">Datos de registro</legend>
+      <p class="required-note">Todos los campos son obligatorios.</p>
+      <div class="fields two-fields">
+        <div class="field">
+          <label for="register-first-name">Nombre</label>
+          <input pInputText id="register-first-name" formControlName="firstName"
+            autocomplete="given-name" placeholder="Tu nombre" required
+            [invalid]="!!messageFor('firstName')"
+            [attr.aria-invalid]="!!messageFor('firstName')"
+            [attr.aria-describedby]="messageFor('firstName') ? 'register-first-name-error' : null" />
+          @if (messageFor('firstName'); as message) {
+            <p-message id="register-first-name-error" class="field-error" severity="error"
+              variant="simple" size="small" [attr.role]="'none'"
+              [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
+          }
+        </div>
+
+        <div class="field">
+          <label for="register-last-name">Apellido</label>
+          <input pInputText id="register-last-name" formControlName="lastName"
+            autocomplete="family-name" placeholder="Tu apellido" required
+            [invalid]="!!messageFor('lastName')"
+            [attr.aria-invalid]="!!messageFor('lastName')"
+            [attr.aria-describedby]="messageFor('lastName') ? 'register-last-name-error' : null" />
+          @if (messageFor('lastName'); as message) {
+            <p-message id="register-last-name-error" class="field-error" severity="error"
+              variant="simple" size="small" [attr.role]="'none'"
+              [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
+          }
+        </div>
+
+        <div class="field full-width">
+          <label id="register-university-label" for="register-university">Facultad</label>
+          <p-select class="university-select" inputId="register-university"
+            ariaLabelledBy="register-university-label" formControlName="universityId" required
+            [options]="universityOptions()" optionLabel="name" optionValue="id"
+            placeholder="Seleccioná tu facultad" emptyMessage="No hay facultades disponibles."
+            [loading]="universitiesLoading()" [invalid]="!!messageFor('universityId')"
+            [pt]="universityPassThrough()" appendTo="body" />
+          <div id="register-university-status" class="hint" role="status">
+            @if (universitiesLoading()) {
+              <span>Cargando facultades…</span>
+            } @else if (!universitiesError() && universities().length === 0) {
+              <span>No hay facultades disponibles. Intentá nuevamente más tarde.</span>
+            }
+          </div>
+          <div id="register-university-error" class="field-error">
+            @if (universitiesError()) {
+              <p-message severity="error" variant="simple" size="small" [attr.role]="'none'"
+                [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ universitiesError() }}</p-message>
+            } @else if (messageFor('universityId'); as message) {
+              <p-message severity="error" variant="simple" size="small" [attr.role]="'none'"
+                [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
+            }
+          </div>
+        </div>
+
+        <div class="field full-width">
+          <label for="register-email">Correo electrónico</label>
+          <input pInputText id="register-email" type="text" inputmode="email" formControlName="email"
+            autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="nombre@ejemplo.com" required
+            [invalid]="!!messageFor('email')"
+            [attr.aria-invalid]="!!messageFor('email')"
+            [attr.aria-describedby]="messageFor('email') ? 'register-email-hint register-email-error' : 'register-email-hint'" />
+          <small id="register-email-hint" class="field-hint">Podés usar un correo de cualquier dominio.</small>
+          @if (messageFor('email'); as message) {
+            <p-message id="register-email-error" class="field-error" severity="error"
+              variant="simple" size="small" [attr.role]="'none'"
+              [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
+          }
+        </div>
+
+        <div class="field full-width">
+          <label for="register-password">Contraseña</label>
+          <input pInputText id="register-password" type="password" formControlName="password"
+            autocomplete="new-password" placeholder="Elegí tu contraseña" required
+            [invalid]="!!messageFor('password')"
+            [attr.aria-invalid]="!!messageFor('password')"
+            aria-describedby="register-password-hint register-password-error" />
+          <small id="register-password-hint" class="hint">No se exige combinar letras, números o símbolos.</small>
+          <div id="register-password-error" class="field-error">
+            @if (messageFor('password'); as message) {
+              <p-message severity="error" variant="simple" size="small" [attr.role]="'none'"
+                [attr.aria-live]="errorMessage() ? 'off' : 'polite'" aria-atomic="true">{{ message }}</p-message>
+            }
+          </div>
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <p-button type="submit" [label]="loading() ? 'Creando cuenta…' : 'Crear cuenta'"
+        [ariaLabel]="loading() ? 'Creando cuenta…' : 'Crear cuenta'"
+        icon="pi pi-arrow-right" iconPos="right" styleClass="btn primary"
+        [style]="{ width: '100%', minHeight: '46px' }"
+        [loading]="loading()" [disabled]="submissionBlocked()" />
+      <span class="hint" role="status">{{ loading() ? 'Enviando tus datos…' : '' }}</span>
+    </div>
+  </form>
+</section>

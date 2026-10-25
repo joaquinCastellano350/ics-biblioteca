@@ -9,7 +9,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// Modelos del equipo, incorporados de HU-3-Inicio-Sesion (ff2b031).
 model University {
   id    String @id @default(uuid()) @db.Uuid
   name  String

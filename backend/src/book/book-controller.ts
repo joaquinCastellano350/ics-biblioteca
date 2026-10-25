@@ -17,4 +17,8 @@ export class BookController {
       })),
     };
   }
+
+  async findAuthors(query?: string) {
+    return { authors: await this.books.findAuthors(query) };
+  }
 }
