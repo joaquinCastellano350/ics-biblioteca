@@ -15,6 +15,7 @@ export class AuthService {
   private readonly logoutStarted = new Subject<void>();
   private expiryTimer: ReturnType<typeof setTimeout> | undefined;
   private expiryDeadline: number | undefined;
+  private expiryWallDeadline: number | undefined;
   readonly session = signal<AuthResponse | null>(null);
   readonly status = signal<'loading' | 'anonymous' | 'authenticated' | 'unavailable'>('loading');
   readonly loginRequested = signal(false);
@@ -37,7 +38,7 @@ export class AuthService {
     if (this.restoring || this.authenticating()) return;
     if (this.expireIfNeeded()) return;
     this.restoring = true;
-    const requestedAt = performance.now();
+    const requestedAt = { monotonic: performance.now(), wall: Date.now() };
     const generation = this.generation;
     const expiryGeneration = this.expiryGeneration;
     const revalidating = this.status() === 'authenticated' && this.session() !== null;
@@ -62,6 +63,7 @@ export class AuthService {
         this.expiryGeneration += 1;
         clearTimeout(this.expiryTimer);
         this.expiryDeadline = undefined;
+        this.expiryWallDeadline = undefined;
         this.session.set(null);
         this.status.set('unavailable');
       },
@@ -99,6 +101,7 @@ export class AuthService {
           clearTimeout(this.expiryTimer);
           this.expiryTimer = undefined;
           this.expiryDeadline = undefined;
+          this.expiryWallDeadline = undefined;
           this.session.set(null);
           this.status.set('anonymous');
           this.loginRequested.set(false);
@@ -120,7 +123,7 @@ export class AuthService {
       if (this.authenticating()) return EMPTY;
       this.authenticating.set(true);
       const generation = ++this.generation;
-      const requestedAt = performance.now();
+      const requestedAt = { monotonic: performance.now(), wall: Date.now() };
       return this.http.post<AuthResponse>(url, body, {
         headers: { 'X-Biblioteca-Request': '1' },
       }).pipe(
@@ -169,14 +172,17 @@ export class AuthService {
         }),
         catchError((error: unknown) => {
           // Un 401 de la cuenta anterior no debe borrar un login más reciente.
-          if (!current()) return EMPTY;
-          if (this.expireIfNeeded()) { this.openLogin(); return EMPTY; }
+          if (generation !== this.generation) return EMPTY;
+          // El vencimiento local invalida datos, pero un AUTH_REQUIRED pendiente
+          // de esa misma sesión todavía debe permitir volver a autenticarse.
           if (error instanceof HttpErrorResponse && error.status === 401
             && error.error?.error?.code === 'AUTH_REQUIRED') {
             this.expireSession();
             this.openLogin();
             return EMPTY;
           }
+          if (!current()) return EMPTY;
+          if (this.expireIfNeeded()) { this.openLogin(); return EMPTY; }
           return throwError(() => error);
         }),
       );
@@ -184,9 +190,21 @@ export class AuthService {
   }
 
   private expireIfNeeded(): boolean {
-    if (this.expiryDeadline === undefined || performance.now() < this.expiryDeadline) return false;
+    const monotonicRemaining = this.expiryDeadline === undefined ? Infinity : this.expiryDeadline - performance.now();
+    const wallRemaining = this.expiryWallDeadline === undefined ? Infinity : this.expiryWallDeadline - Date.now();
+    const remaining = Math.min(monotonicRemaining, wallRemaining);
+    if (remaining > 0) {
+      // Al despertar, el timeout anterior puede seguir contando desde antes de dormir.
+      if (Number.isFinite(remaining)) this.scheduleExpiry(remaining);
+      return false;
+    }
     this.expireSession();
     return true;
+  }
+
+  private scheduleExpiry(remaining: number): void {
+    clearTimeout(this.expiryTimer);
+    this.expiryTimer = setTimeout(() => this.expireSession(), remaining);
   }
 
   private expireSession(): void {
@@ -195,29 +213,34 @@ export class AuthService {
     clearTimeout(this.expiryTimer);
     this.expiryTimer = undefined;
     this.expiryDeadline = undefined;
+    this.expiryWallDeadline = undefined;
     this.session.set(null);
     this.status.set('anonymous');
   }
 
-  private accept(response: AuthResponse, requestedAt: number): void {
+  private accept(response: AuthResponse, requestedAt: { monotonic: number; wall: number }): void {
     const previous = this.session();
     // Descontar toda la petición es conservador y evita regalar tiempo por latencia.
-    const deadline = requestedAt + Date.parse(response.session.expiresAt) - Date.parse(response.serverTime);
+    const duration = Date.parse(response.session.expiresAt) - Date.parse(response.serverTime);
+    const deadline = requestedAt.monotonic + duration;
+    // El reloj de pared cubre la suspensión en sistemas donde performance se detiene;
+    // el monótono evita prolongar la sesión si se atrasa la hora local.
+    const wallDeadline = requestedAt.wall + duration;
     const sameSession = previous?.user.id === response.user.id
       && previous?.session.createdAt === response.session.createdAt
       && previous?.session.expiresAt === response.session.expiresAt;
+    if (!sameSession) this.generation += 1;
     this.expiryDeadline = sameSession && this.expiryDeadline !== undefined
       ? Math.min(this.expiryDeadline, deadline) : deadline;
-    const remaining = this.expiryDeadline - performance.now();
-    clearTimeout(this.expiryTimer);
+    this.expiryWallDeadline = sameSession && this.expiryWallDeadline !== undefined
+      ? Math.min(this.expiryWallDeadline, wallDeadline) : wallDeadline;
+    const remaining = Math.min(this.expiryDeadline - performance.now(), this.expiryWallDeadline - Date.now());
     if (!(remaining > 0)) {
       this.expireSession();
       return;
     }
     this.session.set(response);
     this.status.set('authenticated');
-    this.expiryTimer = setTimeout(() => {
-      this.expireSession();
-    }, remaining);
+    this.scheduleExpiry(remaining);
   }
 }

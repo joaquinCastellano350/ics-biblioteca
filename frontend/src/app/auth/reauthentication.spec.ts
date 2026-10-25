@@ -71,7 +71,7 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
     vi.restoreAllMocks();
   });
 
-  for (const expiry of ['local', 'servidor']) {
+  for (const expiry of ['local', 'servidor', 'servidor tras vencimiento local']) {
     it(`vencimiento ${expiry}: conserva catálogo y filtros, permite cancelar y exige otro clic tras login`, async () => {
       const book = root.querySelector('article');
       const filter = root.querySelector('.chip');
@@ -82,9 +82,15 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
         vi.spyOn(performance, 'now').mockReturnValue(now + 6 * 60 * 60 * 1000);
       }
       opener.focus(); opener.click();
-      if (expiry === 'servidor') http.expectOne('/api/test-action').flush(
-        { error: { code: 'AUTH_REQUIRED' } }, { status: 401, statusText: 'Unauthorized' },
-      );
+      if (expiry !== 'local') {
+        const pending = http.expectOne('/api/test-action');
+        if (expiry === 'servidor tras vencimiento local') {
+          const now = performance.now();
+          vi.spyOn(performance, 'now').mockReturnValue(now + 6 * 60 * 60 * 1000);
+          window.dispatchEvent(new Event('focus'));
+        }
+        pending.flush({ error: { code: 'AUTH_REQUIRED' } }, { status: 401, statusText: 'Unauthorized' });
+      }
       await fixture.whenStable();
       expect(root.querySelector('.account-name')).toBeNull();
       expect(root.querySelectorAll('[role="dialog"]')).toHaveLength(1);
