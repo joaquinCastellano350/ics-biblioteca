@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: './e2e',
   outputDir: '../node_modules/.cache/playwright-results',
   fullyParallel: true,
+  forbidOnly: !!process.env['CI'],
   workers: 2,
   reporter: 'list',
   use: {
@@ -24,6 +25,6 @@ export default defineConfig({
     command: 'npm run dev -- --host 127.0.0.1',
     url: 'http://127.0.0.1:4200',
     reuseExistingServer: !process.env['CI'],
-    timeout: 60000,
+    timeout: 120000,
   },
 });

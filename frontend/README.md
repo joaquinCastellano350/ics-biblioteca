@@ -30,6 +30,12 @@ escritorio, tablet y celular. Las capturas se guardan en
 las operaciones permanecen pendientes. Véase
 [landing e integración](../docs/landing-integracion.md).
 
+En GitHub Actions se usa Chromium instalado por Playwright, `CI=true` y
+`PLAYWRIGHT_CHANNEL=chromium`. El control obligatorio `Release checks` ejecuta
+los tres tamaños y guarda trazas cuando falla. La configuración rechaza `.only`
+en CI y espera hasta dos minutos al servidor exclusivo de pruebas. Ver
+[preparación de release](../docs/release-sprint-1.md).
+
 En desarrollo, Angular escucha en el puerto 4200 y `proxy.conf.json` reenvía `/api/**` a Express en `http://127.0.0.1:3000`, conservando la ruta completa. Por ejemplo, `/api/ready` llega a la misma ruta de la API. Iniciar Express en otra terminal con `npm run dev --workspace backend`.
 
 El proxy solo existe en `ng serve`: no forma parte de la salida estática. En `NODE_ENV=production`, Express sirve el build de Angular y `/api` bajo el mismo origen HTTPS, según el [ADR-0002](../docs/adr/0002-sesion-y-origen-web.md). El [contrato](../docs/contrato-autenticacion.md) usa rutas relativas y cookie HttpOnly con SameSite=Lax. El despliegue en Render sigue pendiente. Ninguna credencial de Neon se incorpora al frontend.
