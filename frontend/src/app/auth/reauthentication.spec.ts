@@ -39,6 +39,7 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
   let root: HTMLElement;
 
   beforeEach(async () => {
+    HTMLElement.prototype.scrollIntoView ??= () => undefined;
     await TestBed.configureTestingModule({
       imports: [ProtectedActionFixture],
       providers: [...appConfig.providers, provideHttpClientTesting(), provideRouter(routes)],
@@ -52,13 +53,15 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
     await router.navigateByUrl('/catalogo?q=algebra#resultados');
     http.expectOne('/api/books').flush({ books: [] });
     await fixture.whenStable();
-    root.querySelector<HTMLButtonElement>('.filter-button')!.click();
+    root.querySelector<HTMLElement>('.p-select-label')!.click();
     fixture.detectChanges();
-    http.expectOne('/api/authors').flush({ authors: [{ id: 'autora', name: 'Autora de prueba' }] });
+    const authorSearch = root.querySelector<HTMLInputElement>('p-select input[aria-label="Buscar autores"]')!;
+    authorSearch.value = 'Autora';
+    authorSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    http.expectOne(request => request.url === '/api/authors' && request.params.get('q') === 'Autora')
+      .flush({ authors: [{ id: 'autora', name: 'Autora de prueba' }] });
     await fixture.whenStable();
-    const checkbox = root.querySelector<HTMLInputElement>('.filter-option input')!;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    root.querySelector<HTMLInputElement>('p-checkbox input[type="checkbox"]')!.click();
     root.querySelector<HTMLButtonElement>('.filter-done')!.click();
     const filtered = http.expectOne(request => request.url === '/api/books');
     expect(filtered.request.params.getAll('authorIds')).toEqual(['autora']);

@@ -10,9 +10,7 @@
   <section class="search-field" aria-label="Buscar libros por título">
     <label class="visually-hidden" for="catalog-title-search">Buscar por título</label>
     <p-iconfield class="search-input">
-      <p-inputicon>
-        <i class="pi pi-search" aria-hidden="true"></i>
-      </p-inputicon>
+      <p-inputicon><i class="pi pi-search" aria-hidden="true"></i></p-inputicon>
       <input id="catalog-title-search" pInputText type="search" autocomplete="off"
         placeholder="Buscar por título del libro…" [value]="titleQuery()"
         (input)="searchByTitle($any($event.target).value)" />
@@ -20,34 +18,53 @@
   </section>
   <section class="filter-wrap" aria-label="Filtro por autor">
     <div class="filter-control">
-      <button #authorToggle class="filter-button" [class.selected]="selectedAuthors().length > 0"
-        type="button" aria-haspopup="dialog" [attr.aria-expanded]="authorMenuOpen()"
-        aria-controls="author-filter-menu" (click)="toggleAuthorMenu()">
-        Autores <span class="filter-count">{{ selectedAuthors().length }}</span>
-      </button>
-      @if (authorMenuOpen()) {
-        <div id="author-filter-menu" class="filter-menu" role="dialog" aria-label="Filtrar por autor">
-          <label class="filter-search-label" for="catalog-author-search">Buscar autores</label>
-          <input #authorSearchInput id="catalog-author-search" class="filter-search" type="search"
-            [value]="authorQuery()" (input)="searchAuthors($any($event.target).value)"
-            placeholder="Buscar autores…" autocomplete="off" />
-          <div class="filter-options" role="group" aria-label="Autores disponibles">
-            @for (author of authorSuggestions(); track author.id) {
-              <label class="filter-option">
-                <input type="checkbox" [checked]="isDraftAuthorSelected(author.id)"
-                  (change)="toggleDraftAuthor(author, $any($event.target).checked)" />
-                <span>{{ author.name }}</span>
-              </label>
-            } @empty {
-              <p class="filter-empty">No se encontraron autores</p>
-            }
-          </div>
+      <label class="filter-label" for="catalog-authors">Autores</label>
+      <p-select
+        inputId="catalog-authors"
+        [options]="authorOptions()"
+        optionLabel="name"
+        dataKey="id"
+        [ngModel]="draftAuthors()"
+        (ngModelChange)="draftAuthors.set($event)"
+        [multiple]="true"
+        display="comma"
+        [filter]="true"
+        [autofocusFilter]="true"
+        [filterValue]="authorQuery()"
+        filterPlaceholder="Buscar autores…"
+        ariaFilterLabel="Buscar autores"
+        placeholder="Seleccionar autores"
+        (onShow)="onAuthorMenuShow()"
+        (onHide)="onAuthorMenuHide()"
+        (onFilter)="searchAuthors($event.filter)"
+        [emptyFilterMessage]="authorSearchError() ? 'No se pudieron cargar autores' : 'No se encontraron autores'"
+        emptyMessage="Escribí un término para buscar autores"
+        [loading]="authorSearchLoading()"
+        [resetFilterOnHide]="false"
+        appendTo="self"
+        styleClass="author-select"
+      >
+        <ng-template #item let-author>
+          <span class="author-option">
+            <p-checkbox
+              [ngModel]="isDraftAuthorSelected(author.id)"
+              [ngModelOptions]="{ standalone: true }"
+              [binary]="true"
+              [tabindex]="-1"
+              [ariaLabel]="'Seleccionar ' + author.name"
+              (onChange)="setDraftAuthorSelected(author, $event.checked)"
+              (click)="$event.stopPropagation()"
+            />
+            <span>{{ author.name }}</span>
+          </span>
+        </ng-template>
+        <ng-template #footer>
           <footer class="filter-footer">
             <button class="filter-clear" type="button" (click)="clearDraftAuthors()">Limpiar</button>
             <button class="filter-done" type="button" (click)="applyAuthorMenu()">Listo</button>
           </footer>
-        </div>
-      }
+        </ng-template>
+      </p-select>
     </div>
     @if (selectedAuthors().length) {
       <div class="selected-filters" aria-label="Autores seleccionados">
