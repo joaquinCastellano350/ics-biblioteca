@@ -9,8 +9,6 @@ async function withCatalog(books: BookRepositoryInterface, check: (url: string) 
   const app = createApp({
     checkDatabase: async () => {},
     checkStorage: async () => {},
-    listUniversities: async () => [],
-    registrationService: { register: async () => { throw new Error('El catálogo no debe registrar usuarios.'); } },
     books,
   });
   const server = app.listen(0, '127.0.0.1');
@@ -58,9 +56,9 @@ test('el catálogo público conserva todos los libros y metadatos y oculta datos
     assert.equal(result.books[0].subjects.length, 2);
     assert.ok(!JSON.stringify(result).includes('private.pdf'));
     assert.deepEqual(Object.keys(result.books[0]), ['id', 'title', 'authors', 'subjects']);
-    const filtered = await fetch(`${url}/api/books?authorIds=a1&authorIds=a3`);
+    const filtered = await fetch(`${url}/api/books?title=red%20parcial&authorIds=a1&authorIds=a3`);
     assert.equal(filtered.status, 200);
-    assert.deepEqual(receivedCriteria, { authorIds: ['a1', 'a3'] });
+    assert.deepEqual(receivedCriteria, { title: 'red parcial', authorIds: ['a1', 'a3'] });
     const authors = await fetch(`${url}/api/authors?q=ana`);
     assert.equal(authors.status, 200);
     assert.deepEqual(await authors.json(), { authors: [{ id: 'a1', name: 'Ana' }] });

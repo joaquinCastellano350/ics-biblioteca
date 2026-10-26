@@ -4,6 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { By } from '@angular/platform-browser';
 import { NavigationEnd, provideRouter, Router } from '@angular/router';
 import { providePrimeNG } from 'primeng/config';
+import { Button } from 'primeng/button';
 import { filter, firstValueFrom } from 'rxjs';
 import { App } from './app';
 import { routes } from './app.routes';
@@ -151,7 +152,12 @@ describe('App', () => {
     });
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('.account-name')?.textContent).toContain('Hola, Ana');
-    expect(fixture.nativeElement.querySelector('.account-actions button')).toBeNull();
+    const logout = fixture.debugElement.query(By.css('.account-actions')).query(By.directive(Button));
+    expect(logout).not.toBeNull();
+    expect(logout.componentInstance.label()).toBe('Cerrar sesión');
+    const logoutButton = logout.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(logoutButton.textContent).toContain('Cerrar sesión');
+    expect(logoutButton.disabled).toBe(false);
     expect(fixture.nativeElement.querySelector('.hero-actions a[href="/registro"]')).toBeNull();
     auth.restore();
     http.expectOne('/api/auth/session').flush({}, { status: 401, statusText: 'Unauthorized' });

@@ -5,6 +5,7 @@ export interface BookRepositoryInterface {
   findAuthors(query?: string): Promise<readonly CatalogTerm[]>;
 }
 
+/** Optional catalog criteria; future filters can be added without changing the query flow. */
 export interface BookSearchCriteria {
   readonly title?: string;
   readonly authorIds?: readonly string[];

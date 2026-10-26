@@ -165,6 +165,34 @@ export function accountsScenarios(name: string, open: () => Promise<AccountsFixt
       assert.equal((await current(b)).status, 401);
     });
 
+    it('la actividad no cambia el vencimiento persistido y reautenticar inicia otras seis horas', async () => {
+      const registered = await post('register', data);
+      const oldCookie = cookie(registered);
+      const body = await registered.json();
+      const where = { tokenHash: tokenHash(oldCookie.slice('biblioteca_session='.length)) };
+      const original = await fixture.database.session.findUniqueOrThrow({ where });
+      for (let index = 0; index < 3; index++) {
+        const response = await current(oldCookie);
+        assert.equal(response.status, 200);
+        assert.deepEqual((await response.json()).session, body.session);
+        assert.equal(response.headers.get('set-cookie'), null);
+      }
+      assert.deepEqual(await fixture.database.session.findUniqueOrThrow({ where }), original);
+      await fixture.query(`WITH instant AS (SELECT clock_timestamp()::timestamptz(3) AS now)
+        UPDATE sessions SET created_at = instant.now - interval '6 hours', expires_at = instant.now
+        FROM instant WHERE token_hash = $1 RETURNING id`, [where.tokenHash]);
+      const expired = await current(oldCookie);
+      assert.equal(expired.status, 401);
+      assert.equal((await expired.json()).error.code, 'AUTH_REQUIRED');
+      const logged = await post('login', data, oldCookie);
+      assert.equal(logged.status, 200);
+      const renewed = await logged.json();
+      assert.equal(Date.parse(renewed.session.expiresAt) - Date.parse(renewed.session.createdAt), SESSION_DURATION_MS);
+      assert.notEqual(cookie(logged), oldCookie);
+      assert.equal((await current(cookie(logged))).status, 200);
+      assert.equal((await current(oldCookie)).status, 401);
+    });
+
     it('correos internacionales y contraseña de 1024 bytes funcionan en ambas historias', async () => {
       const password = 'ñ'.repeat(512);
       for (const email of ['iñaki@example.org', 'ana@bücher.de']) {

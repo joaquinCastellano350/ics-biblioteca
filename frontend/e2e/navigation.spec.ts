@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('landing y navegación pública sin placeholders', async ({ page }, testInfo) => {
   await page.route('**/api/books', (route) => route.fulfill({ json: { books: [] } }));
+  await page.route('**/api/subjects', (route) => route.fulfill({ json: { subjects: [] } }));
   await page.route('**/api/auth/session', route => route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED' } } }));
   await page.route('**/api/universities', route => route.fulfill({ json: { universities: [] } }));
   await page.goto('/');

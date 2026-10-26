@@ -51,11 +51,7 @@ desbordarse, pero conservan los metadatos completos recibidos. No abren detalle.
 desplegable. Una falla devuelve 503 con `SUBJECTS_UNAVAILABLE` y no expone
 errores internos.
 
-El repositorio recibe el PrismaClient compartido de `database.ts`; no abre un
-pool adicional ni usa SQL manual para consultar libros. La entidad contiene
-`titleSearch`, `pdfObjectKey`, `totalCopies` y `createdAt`, con el mapeo a los
-nombres SQL del modelo. La proyección pública excluye esos campos internos.
-`select` evita traer la clave del PDF desde la base para esta consulta.
+El repositorio recibe el PrismaClient compartido de database.ts; no abre pool adicional. La búsqueda de títulos usa SQL parametrizado para normalizar y comparar el título sin depender de title_search; Prisma carga después la proyección pública y sus relaciones. La proyección excluye los campos internos.
 
 Una falla devuelve `503` con `error.code = CATALOG_UNAVAILABLE`; el frontend
 ofrece reintentar. No sustituye un fallo por una colección vacía o datos de

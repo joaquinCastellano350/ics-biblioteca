@@ -24,7 +24,7 @@ test('la vigencia de la sesión tiene límite exclusivo y respeta revocación', 
 test('HTTP rechaza escrituras sin protección, cuerpos inválidos y oculta fallos de base', async (t) => {
   const fail = async (): Promise<never> => { throw Object.assign(new Error('credencial-privada-no-exponer'), { code: 'P1001' }); };
   const accounts = new AccountsService({
-    findUser: fail, findSession: fail, createSession: fail, listUniversities: fail,
+    findUser: fail, findSession: fail, createSession: fail, revokeSession: fail, listUniversities: fail,
   });
   const server = createApp({ checkDatabase: async () => {}, checkStorage: async () => {}, accounts }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
@@ -70,12 +70,18 @@ test('login y consulta conservan la respuesta pública y la cookie de seis horas
       return { session, serverTime: createdAt };
     },
     findSession: async (hash) => stored?.hash === hash ? { session: stored.session, serverTime: createdAt } : null,
+    revokeSession: async (hash) => {
+      if (stored?.hash === hash && stored.session.revokedAt === null) stored.session.revokedAt = createdAt;
+    },
     listUniversities: async () => [user.university],
   };
   const server = createApp({
     checkDatabase: async () => {}, checkStorage: async () => {},
     accounts: new AccountsService(repository), production: true,
-    books: { findAll: async () => [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }] },
+    books: {
+      findAll: async () => [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }],
+      findAuthors: async () => [],
+    },
   }).listen(0, '127.0.0.1');
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
   await once(server, 'listening');

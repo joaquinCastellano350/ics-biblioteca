@@ -16,86 +16,114 @@
         <input id="catalog-title-search" pInputText type="search" autocomplete="off"
           placeholder="Buscar por título del libro…" [value]="titleQuery()"
           (input)="searchByTitle($any($event.target).value)" />
+        @if (titleQuery()) {
+          <p-button class="title-search-clear" icon="pi pi-times" [text]="true" [rounded]="true"
+            ariaLabel="Limpiar búsqueda por título" (onClick)="searchByTitle('')" />
+        }
       </p-iconfield>
     </section>
 
     <section class="author-filter" aria-label="Filtro por autor">
       <div class="filter-control">
-        <button #authorToggle class="filter-button" [class.selected]="selectedAuthors().length > 0"
-          type="button" aria-haspopup="dialog" [attr.aria-expanded]="authorMenuOpen()"
-          aria-controls="author-filter-menu" (click)="toggleAuthorMenu()">
-          Autores <span class="filter-count">{{ selectedAuthors().length }}</span>
-          <i class="pi pi-chevron-down filter-chevron" aria-hidden="true"></i>
-        </button>
-        @if (authorMenuOpen()) {
-          <div id="author-filter-menu" class="filter-menu" role="dialog" aria-label="Filtrar por autor">
-            <label class="filter-search-label" for="catalog-author-search">Buscar autores</label>
-            <input #authorSearchInput id="catalog-author-search" class="filter-search" type="search"
-              [value]="authorQuery()" (input)="searchAuthors($any($event.target).value)"
-              placeholder="Buscar autores…" autocomplete="off" />
-            <div class="filter-options" role="group" aria-label="Autores disponibles">
-              @for (author of authorSuggestions(); track author.id) {
-                <label class="filter-option">
-                  <p-checkbox [binary]="true" [ngModel]="isDraftAuthorSelected(author.id)"
-                    [ngModelOptions]="{ standalone: true }"
-                    (ngModelChange)="toggleDraftAuthor(author, $event)" />
-                  <span>{{ author.name }}</span>
-                </label>
-              } @empty {
-                <p class="filter-empty">No se encontraron autores</p>
-              }
-            </div>
+        <p-select
+          inputId="catalog-authors"
+          #authorSelect
+          [options]="authorOptions()"
+          optionLabel="name"
+          dataKey="id"
+          [ngModel]="draftAuthors()"
+          (ngModelChange)="draftAuthors.set($event)"
+          [multiple]="true"
+          display="comma"
+          [filter]="true"
+          [autofocusFilter]="true"
+          [filterValue]="authorQuery()"
+          filterPlaceholder="Buscar autores…"
+          ariaFilterLabel="Buscar autores"
+          ariaLabel="Filtrar por autores"
+          placeholder="Seleccionar autores"
+          (onShow)="onAuthorMenuShow()"
+          (onHide)="onAuthorMenuHide()"
+          (onFilter)="searchAuthors($event.filter)"
+          [emptyFilterMessage]="authorSearchError() ? 'No se pudieron cargar autores' : 'No se encontraron autores'"
+          emptyMessage="Escribí un término para buscar autores"
+          [loading]="authorSearchLoading()"
+          [resetFilterOnHide]="false"
+          appendTo="self"
+          panelStyleClass="catalog-author-overlay"
+          [scrollHeight]="authorScrollHeight()"
+          styleClass="author-select"
+        >
+          <ng-template #selectedItem>
+            {{ selectedAuthors().length ? 'Autores (' + selectedAuthors().length + ')' : 'Seleccionar autores' }}
+          </ng-template>
+          <ng-template #item let-author>
+            <span class="author-option">
+              <p-checkbox
+                [ngModel]="isDraftAuthorSelected(author.id)"
+                [ngModelOptions]="{ standalone: true }"
+                [binary]="true"
+                [tabindex]="-1"
+                [ariaLabel]="'Seleccionar ' + author.name"
+                (onChange)="setDraftAuthorSelected(author, $event.checked)"
+                (click)="$event.stopPropagation()"
+              />
+              <span>{{ author.name }}</span>
+            </span>
+          </ng-template>
+          <ng-template #footer>
             <footer class="filter-footer">
               <button class="filter-clear" type="button" (click)="clearDraftAuthors()">Limpiar</button>
               <button class="filter-done" type="button" (click)="applyAuthorMenu()">Listo</button>
             </footer>
-          </div>
-        }
+          </ng-template>
+        </p-select>
       </div>
       @if (selectedAuthors().length) {
         <div class="selected-filters" aria-label="Autores seleccionados">
           @for (author of selectedAuthors(); track author.id) {
             <button class="chip" type="button" [attr.aria-label]="'Quitar filtro de autor ' + author.name"
-              (click)="removeSelectedAuthor(author.id)">{{ author.name }} <span aria-hidden="true">×</span></button>
+              (click)="removeSelectedAuthor(author.id)">{{ author.name }} <span class="chip-remove" aria-hidden="true">×</span></button>
           }
         </div>
       }
     </section>
-
     <section class="subject-filter" aria-label="Filtro por materias">
       <label class="visually-hidden" for="catalog-subject-filter">Filtrar por materias</label>
-      <p-select #subjectSelect class="subject-select" panelStyleClass="catalog-subject-overlay"
-        inputId="catalog-subject-filter" [options]="subjects()"
-        optionLabel="name" dataKey="id" [multiple]="true" [filter]="true" filterBy="name"
-        filterPlaceholder="Buscar materia…" emptyMessage="No hay materias disponibles."
-        emptyFilterMessage="No hay coincidencias."
-        [placeholder]="subjectsStatus() === 'loading' ? 'Cargando materias…' : 'Materias'"
-        [loading]="subjectsStatus() === 'loading'" [ngModel]="draftSubjects()"
-        (ngModelChange)="updateDraftSubjects($event)" (onShow)="startSubjectSelection()"
-        (onHide)="discardSubjectSelection()" [disabled]="subjectsStatus() !== 'ready'"
-        ariaLabel="Filtrar por materias">
-        <ng-template #selectedItem>
-          Materias@if (draftSubjects().length) { ({{ draftSubjects().length }}) }
-        </ng-template>
-        <ng-template #item let-subject>
-          <div class="subject-option">
-            <p-checkbox [binary]="true" [ngModel]="isSubjectSelected(subject)"
-              [ngModelOptions]="{ standalone: true }" [readonly]="true" aria-hidden="true" />
-            <span>{{ subject.name }}</span>
-          </div>
-        </ng-template>
-        <ng-template #footer>
-          <div class="filter-footer">
-            <button class="filter-clear" type="button" (click)="clearSubjectSelection()">Limpiar</button>
-            <button class="filter-done" type="button" (click)="applySubjectSelection()">Listo</button>
-          </div>
-        </ng-template>
-      </p-select>
+      <div class="filter-control">
+        <p-select #subjectSelect class="subject-select" panelStyleClass="catalog-subject-overlay"
+          inputId="catalog-subject-filter" [options]="subjects()"
+          optionLabel="name" dataKey="id" [multiple]="true" [filter]="true" filterBy="name"
+          filterPlaceholder="Buscar materia…" ariaFilterLabel="Buscar materias" emptyMessage="No hay materias disponibles."
+          emptyFilterMessage="No hay coincidencias."
+          [placeholder]="subjectsStatus() === 'loading' ? 'Cargando materias…' : 'Materias'"
+          [loading]="subjectsStatus() === 'loading'" [ngModel]="draftSubjects()"
+          (ngModelChange)="updateDraftSubjects($event)" (onShow)="startSubjectSelection()"
+          (onHide)="discardSubjectSelection()" [disabled]="subjectsStatus() !== 'ready'"
+          ariaLabel="Filtrar por materias" appendTo="self" [scrollHeight]="subjectScrollHeight()">
+          <ng-template #selectedItem>
+            {{ subjectsStatus() === 'loading' ? 'Cargando materias…' : selectedSubjects().length ? 'Materias (' + selectedSubjects().length + ')' : 'Materias' }}
+          </ng-template>
+          <ng-template #item let-subject>
+            <div class="subject-option">
+              <p-checkbox [binary]="true" [ngModel]="isSubjectSelected(subject)"
+                [ngModelOptions]="{ standalone: true }" [readonly]="true" aria-hidden="true" />
+              <span>{{ subject.name }}</span>
+            </div>
+          </ng-template>
+          <ng-template #footer>
+            <div class="filter-footer">
+              <button class="filter-clear" type="button" (click)="clearSubjectSelection()">Limpiar</button>
+              <button class="filter-done" type="button" (click)="applySubjectSelection()">Listo</button>
+            </div>
+          </ng-template>
+        </p-select>
+      </div>
       @if (selectedSubjects().length) {
         <div class="selected-filters" aria-label="Materias seleccionadas">
           @for (subject of selectedSubjects(); track subject.id) {
             <button type="button" class="chip subject-chip" [attr.aria-label]="'Quitar materia ' + subject.name"
-              (click)="removeSubject(subject)">{{ subject.name }} <span aria-hidden="true">×</span></button>
+              (click)="removeSubject(subject)">{{ subject.name }} <span class="chip-remove" aria-hidden="true">×</span></button>
           }
         </div>
       }
@@ -141,7 +169,7 @@
             <i class="pi pi-search" aria-hidden="true"></i>
             <h2>Sin resultados</h2>
             <p>No encontramos libros con esta combinación. Probá con otro título o quitá algún filtro.</p>
-            <button pButton type="button" severity="secondary" (click)="clearFilters()">Limpiar búsqueda y materias</button>
+            <button pButton type="button" severity="secondary" (click)="clearFilters()">Limpiar todos los filtros</button>
           </div>
         } @else {
           <div class="state-panel" role="status">

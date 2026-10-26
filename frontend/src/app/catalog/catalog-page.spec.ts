@@ -1,9 +1,13 @@
-﻿import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { By } from '@angular/platform-browser';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Checkbox } from 'primeng/checkbox';
 import { Select } from 'primeng/select';
+import { IconField } from 'primeng/iconfield';
+import { InputIcon } from 'primeng/inputicon';
+import { InputText } from 'primeng/inputtext';
+import { vi } from 'vitest';
 import { CatalogPage } from './catalog-page';
 import { appConfig } from '../app.config';
 import type { CatalogTerm } from './book';
@@ -13,6 +17,35 @@ const subjects: readonly CatalogTerm[] = [
   { id: '22222222-2222-4222-8222-222222222222', name: 'Sistemas' },
 ];
 
+function flushInitialSubjectRequests(http: HttpTestingController): void {
+  http.expectOne('/api/books').flush({ books: [] });
+  http.expectOne('/api/subjects').flush({ subjects });
+}
+
+function openSubjectSelector(fixture: ComponentFixture<CatalogPage>): HTMLElement {
+  const root = fixture.nativeElement as HTMLElement;
+  const label = root.querySelector('p-select.subject-select .p-select-label');
+  expect(label).not.toBeNull();
+  label?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  fixture.detectChanges();
+  return root;
+}
+
+function overlayFor(root: HTMLElement, className: string): HTMLElement {
+  return root.querySelector<HTMLElement>(`.${className}`) ?? root;
+}
+
+function chooseSubject(root: HTMLElement, name: string): void {
+  const option = Array.from(overlayFor(root, 'catalog-subject-overlay').querySelectorAll('.p-select-option'))
+    .find((candidate) => candidate.textContent?.includes(name));
+  expect(option).toBeDefined();
+  option?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+}
+
+function subjectOption(root: HTMLElement, name: string): Element | undefined {
+  return Array.from(overlayFor(root, 'catalog-subject-overlay').querySelectorAll('.p-select-option'))
+    .find((candidate) => candidate.textContent?.includes(name));
+}
 function createCatalogFixture() {
   const fixture = TestBed.createComponent(CatalogPage);
   const http = TestBed.inject(HttpTestingController);
@@ -21,53 +54,67 @@ function createCatalogFixture() {
   return { fixture, http };
 }
 
-function flushInitialSubjectRequests(http: HttpTestingController): void {
-  http.expectOne('/api/books').flush({ books: [] });
-  http.expectOne('/api/subjects').flush({ subjects });
-}
-
-function openSubjectSelector(fixture: ComponentFixture<CatalogPage>): HTMLElement {
-  const root = fixture.nativeElement as HTMLElement;
-  const label = root.querySelector('p-select .p-select-label');
-  expect(label).not.toBeNull();
-  label?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  fixture.detectChanges();
-  return root;
-}
-
-function chooseSubject(root: HTMLElement, name: string): void {
-  const option = Array.from(root.querySelectorAll('.p-select-option'))
-    .find((candidate) => candidate.textContent?.includes(name));
-  expect(option).toBeDefined();
-  option?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-}
-
-function subjectOption(root: HTMLElement, name: string): Element | undefined {
-  return Array.from(root.querySelectorAll('.p-select-option'))
-    .find((candidate) => candidate.textContent?.includes(name));
-}
-
-function openAuthorMenu(fixture: ComponentFixture<CatalogPage>, http: HttpTestingController) {
-  fixture.nativeElement.querySelector('.filter-button').click();
-  fixture.detectChanges();
-  const authors = http.expectOne((request) => request.url === '/api/authors');
-  return authors;
-}
-
 function expectBooks(http: HttpTestingController) {
   return http.expectOne((request) => request.url === '/api/books');
 }
 
-function checkboxFor(fixture: ComponentFixture<CatalogPage>, name: string): HTMLInputElement {
-  const options = Array.from(
-    fixture.nativeElement.querySelectorAll('.filter-option'),
-  ) as HTMLLabelElement[];
-  const checkbox = options.find((option) => option.textContent?.trim() === name)?.querySelector('input[type="checkbox"]');
-  if (!(checkbox instanceof HTMLInputElement)) throw new Error(`No encontré el checkbox para ${name}`);
-  return checkbox;
+function expectAuthorSearch(http: HttpTestingController, query: string) {
+  return http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === query);
 }
 
-describe('Public catalog', () => {
+function selectRoot(fixture: ReturnType<typeof createCatalogFixture>['fixture']): HTMLElement {
+  const root = fixture.nativeElement.querySelector('.p-select');
+  if (!(root instanceof HTMLElement)) throw new Error('No se encontró el control Select de PrimeNG');
+  return root;
+}
+
+function selectedAuthorLabel(fixture: ReturnType<typeof createCatalogFixture>['fixture']): string {
+  const label = selectRoot(fixture).querySelector('.p-select-label');
+  if (!(label instanceof HTMLElement)) throw new Error('No se encontrÃ³ la etiqueta de selecciÃ³n de PrimeNG');
+  return label.textContent?.trim() ?? '';
+}
+
+async function openAuthorSelect(fixture: ReturnType<typeof createCatalogFixture>['fixture']): Promise<void> {
+  selectRoot(fixture).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  fixture.detectChanges();
+  await fixture.whenStable();
+  fixture.detectChanges();
+}
+
+function authorSearchInput(fixture: ReturnType<typeof createCatalogFixture>['fixture']): HTMLInputElement {
+  const input = overlayFor(fixture.nativeElement as HTMLElement, 'catalog-author-overlay')
+    .querySelector('input[aria-label="Buscar autores"]');
+  if (!(input instanceof HTMLInputElement)) throw new Error('No se encontró el filtro accesible de autores');
+  return input;
+}
+
+function typeAuthorSearch(fixture: ReturnType<typeof createCatalogFixture>['fixture'], query: string): void {
+  const input = authorSearchInput(fixture);
+  input.value = query;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  fixture.detectChanges();
+}
+
+function chooseAuthor(fixture: ReturnType<typeof createCatalogFixture>['fixture'], name: string): void {
+  const host = fixture.nativeElement as HTMLElement;
+  const options = host.querySelectorAll<HTMLElement>('[role="option"]');
+  const option = Array.from(options)
+    .find((candidate) => candidate.textContent?.trim() === name);
+  if (!(option instanceof HTMLElement)) throw new Error(`No se encontró la opción ${name}`);
+  option.click();
+  fixture.detectChanges();
+}
+
+function buttonByText(fixture: ReturnType<typeof createCatalogFixture>['fixture'], text: string): HTMLButtonElement {
+  const host = fixture.nativeElement as HTMLElement;
+  const buttons = host.querySelectorAll<HTMLButtonElement>('button');
+  const button = Array.from(buttons)
+    .find((candidate) => candidate.textContent?.trim().includes(text) || candidate.getAttribute('aria-label') === text);
+  if (!(button instanceof HTMLButtonElement)) throw new Error(`No se encontró el botón ${text}`);
+  return button;
+}
+
+describe('Public catalog author filtering', () => {
   beforeEach(() => {
     if (!HTMLElement.prototype.scrollIntoView) {
       HTMLElement.prototype.scrollIntoView = () => {};
@@ -79,85 +126,354 @@ describe('Public catalog', () => {
 
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
-  it('moves focus into the author menu and returns it to the button on confirm and cancel', async () => {
+  it('renders the PrimeNG title search, searches while typing, and shows Sin resultados', async () => {
     const { fixture, http } = createCatalogFixture();
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
-
-    const button = fixture.nativeElement.querySelector('.filter-button') as HTMLButtonElement;
-    button.click();
     fixture.detectChanges();
-    http.expectOne('/api/authors').flush({ authors: [] });
-    await fixture.whenStable();
-    const search = fixture.nativeElement.querySelector('#catalog-author-search') as HTMLInputElement;
-    expect(document.activeElement).toBe(search);
+    const input = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
+    expect(fixture.debugElement.query(By.directive(InputText))?.nativeElement).toBe(input);
+    expect(fixture.debugElement.query(By.directive(IconField))).not.toBeNull();
+    expect(fixture.debugElement.query(By.directive(InputIcon))).not.toBeNull();
 
-    fixture.nativeElement.querySelector('.filter-done').click();
-    expect(document.activeElement).toBe(button);
-    expectBooks(http).flush({ books: [] });
+    input.value = 'cien';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const search = http.expectOne('/api/books?title=cien');
+    expect(search.request.params.get('title')).toBe('cien');
+    search.flush({ books: [] });
     await fixture.whenStable();
-
-    button.click();
     fixture.detectChanges();
-    http.expectOne('/api/authors').flush({ authors: [] });
+    expect(fixture.nativeElement.querySelector('.title-empty-state h2')?.textContent).toContain('Sin resultados');
+
+    buttonByText(fixture, 'Limpiar todos los filtros').click();
+    const cleared = expectBooks(http);
+    expect(cleared.request.params.has('title')).toBe(false);
+    cleared.flush({ books: [] });
     await fixture.whenStable();
-    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#catalog-author-search'));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(document.activeElement).toBe(button);
-    expect(http.match('/api/books')).toHaveLength(0);
+    fixture.detectChanges();
+    expect(input.value).toBe('');
+    expect(fixture.nativeElement.querySelector('.title-empty-state')).toBeNull();
   });
 
-  it('does not focus a search field if the menu closes before its next render', async () => {
+  it('combines title and author criteria and keeps authors when the title is cleared', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [
+      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+    ] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    chooseAuthor(fixture, 'Ana');
+    buttonByText(fixture, 'Listo').click();
+    const byAuthor = expectBooks(http);
+    expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
+    byAuthor.flush({ books: [
+      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+    ] });
     await fixture.whenStable();
 
-    const button = fixture.nativeElement.querySelector('.filter-button') as HTMLButtonElement;
-    fixture.componentInstance.toggleAuthorMenu();
-    fixture.componentInstance.toggleAuthorMenu();
-    http.expectOne('/api/authors').flush({ authors: [] });
-    fixture.detectChanges();
+    const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
+    title.value = 'red';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    const combined = expectBooks(http);
+    expect(combined.request.params.get('title')).toBe('red');
+    expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
+    combined.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('#catalog-author-search')).toBeNull();
-    expect(document.activeElement).toBe(button);
+
+    title.value = '';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    const titleCleared = expectBooks(http);
+    expect(titleCleared.request.params.has('title')).toBe(false);
+    expect(titleCleared.request.params.getAll('authorIds')).toEqual(['author-1']);
+    titleCleared.flush({ books: [
+      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+    ] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('Algoritmos');
   });
 
-  it('opens the author menu, searches remotely, applies multiple authors on Listo, and removes a chip', async () => {
+  it('opens PrimeNG Select without fetching all authors and prompts for a search term', async () => {
     const { fixture, http } = createCatalogFixture();
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
 
-    const initialAuthors = openAuthorMenu(fixture, http);
-    expect(fixture.nativeElement.querySelector('.filter-button').getAttribute('aria-expanded')).toBe('true');
-    initialAuthors.flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Ana María' }] });
-    await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).not.toContain('Recientes');
-    expect(fixture.nativeElement.textContent).not.toContain('Mostrar lista completa');
+    const select = fixture.debugElement.query(By.directive(Select));
+    expect(select).not.toBeNull();
+    expect(select.componentInstance.multiple()).toBe(true);
+    expect(select.componentInstance.filter()).toBe(true);
 
-    const search = fixture.nativeElement.querySelector('#catalog-author-search') as HTMLInputElement;
-    search.value = 'ana';
-    search.dispatchEvent(new Event('input'));
-    const searchedAuthors = http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana');
-    searchedAuthors.flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Ana María' }] });
-    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    http.expectNone('/api/authors');
+    expect(overlayFor(fixture.nativeElement as HTMLElement, 'catalog-author-overlay').textContent)
+      .toContain('Escribí un término para buscar autores');
+    expect(overlayFor(fixture.nativeElement as HTMLElement, 'catalog-author-overlay').textContent).not.toContain('Recientes');
+    expect(overlayFor(fixture.nativeElement as HTMLElement, 'catalog-author-overlay').textContent).not.toContain('Mostrar lista completa');
+  });
 
-    checkboxFor(fixture, 'Ana').click();
-    checkboxFor(fixture, 'Ana María').click();
+  it('moves focus into the author search and returns focus to the Select when confirmed or cancelled', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    const select = selectRoot(fixture);
+    await openAuthorSelect(fixture);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(document.activeElement).toBe(authorSearchInput(fixture));
+    buttonByText(fixture, 'Listo').click();
     fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(select.querySelector('.p-select-label'));
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+
+    await openAuthorSelect(fixture);
+    authorSearchInput(fixture).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await fixture.whenStable();
+    expect(fixture.componentInstance.authorMenuOpen()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.catalog-author-overlay')).toBeNull();
+    expect(document.activeElement).toBe(select.querySelector('.p-select-label'));
+    for (const request of http.match('/api/books')) request.flush({ books: [] });
+  });
+
+  it('does not focus the author search if PrimeNG closes before the next render', () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    fixture.detectChanges();
+    const searchInput = document.createElement('input');
+    searchInput.setAttribute('aria-label', 'Buscar autores');
+    fixture.nativeElement.append(searchInput);
+    const focus = vi.spyOn(searchInput, 'focus');
+    const originalSetTimeout = globalThis.setTimeout;
+    let focusTimer: (() => void) | undefined;
+    const timers = vi.spyOn(globalThis, 'setTimeout');
+    timers.mockImplementation((handler, delay) => {
+      if (delay === 50) {
+        if (typeof handler === 'function') focusTimer = handler as () => void;
+        return 0;
+      }
+      return originalSetTimeout(handler, delay);
+    });
+
+    try {
+      fixture.componentInstance.onAuthorMenuShow();
+      fixture.componentInstance.onAuthorMenuHide();
+      fixture.detectChanges();
+
+      expect(focusTimer).toBeDefined();
+      focusTimer?.();
+
+      expect(fixture.componentInstance.authorMenuOpen()).toBe(false);
+      expect(focus).not.toHaveBeenCalled();
+    } finally {
+      timers.mockRestore();
+    }
+  });
+
+  it('keeps the title filter when all selected authors are removed', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    chooseAuthor(fixture, 'Ana');
+    buttonByText(fixture, 'Listo').click();
+
+    const byAuthor = expectBooks(http);
+    expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
+    byAuthor.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    await fixture.whenStable();
+
+    const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
+    title.value = 'red';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    const combined = expectBooks(http);
+    expect(combined.request.params.get('title')).toBe('red');
+    expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
+    combined.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    await fixture.whenStable();
+
+    buttonByText(fixture, 'Quitar filtro de autor Ana').click();
+    const titleOnly = expectBooks(http);
+    expect(titleOnly.request.params.get('title')).toBe('red');
+    expect(titleOnly.request.params.has('authorIds')).toBe(false);
+    titleOnly.flush({ books: [{ id: 'b2', title: 'Redes avanzadas', authors: [], subjects: [] }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(title.value).toBe('red');
+    expect(fixture.nativeElement.textContent).toContain('Redes avanzadas');
+    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(0);
+  });
+
+  it('sends PrimeNG filter input to the remote author search endpoint', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    http.expectNone('/api/authors');
+
+    typeAuthorSearch(fixture, 'ana');
+    const request = http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana');
+    expect(request.request.method).toBe('GET');
+    request.flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Ana María' }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Ana María');
+  });
+
+  it('renders PrimeNG checkboxes and keeps each option synchronized with provisional selection', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'a');
+    http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'a')
+      .flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const checkboxes = fixture.debugElement.queryAll(By.directive(Checkbox));
+    expect(checkboxes).toHaveLength(2);
+    const host = fixture.nativeElement as HTMLElement;
+    const checkboxInputs = host.querySelectorAll<HTMLInputElement>('p-checkbox input[type="checkbox"]');
+    expect(checkboxInputs).toHaveLength(2);
+    expect(Array.from(checkboxInputs).map(({ checked }) => checked)).toEqual([false, false]);
+
+    checkboxInputs[0].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.draftAuthors().map(({ id }) => id)).toEqual(['author-1']);
+    expect(fixture.componentInstance.selectedAuthors()).toEqual([]);
+    expect(checkboxInputs[0].checked).toBe(true);
+
+    chooseAuthor(fixture, 'Beatriz');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.draftAuthors().map(({ id }) => id)).toEqual(['author-1', 'author-2']);
+    expect(Array.from(checkboxInputs).map(({ checked }) => checked)).toEqual([true, true]);
+
+    checkboxInputs[0].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.draftAuthors().map(({ id }) => id)).toEqual(['author-2']);
+    expect(Array.from(checkboxInputs).map(({ checked }) => checked)).toEqual([false, true]);
     expect(fixture.componentInstance.selectedAuthors()).toEqual([]);
     expect(http.match('/api/books')).toHaveLength(0);
-    fixture.nativeElement.querySelector('.filter-done').click();
+  });
+
+  it('selects several remote authors provisionally, confirms them, and filters books through the backend', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'a');
+    http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'a')
+      .flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    chooseAuthor(fixture, 'Ana');
+    chooseAuthor(fixture, 'Beatriz');
+    expect(fixture.componentInstance.selectedAuthors()).toEqual([]);
+    expect(selectedAuthorLabel(fixture)).toBe('Seleccionar autores');
+    expect(http.match('/api/books')).toHaveLength(0);
+    buttonByText(fixture, 'Listo').click();
+    fixture.detectChanges();
+
     const filtered = expectBooks(http);
     expect(filtered.request.params.getAll('authorIds')).toEqual(['author-1', 'author-2']);
+    filtered.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-3', name: 'Autora visible' }], subjects: [] }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Redes');
+    expect(fixture.nativeElement.textContent).toContain('Autora visible');
+    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(2);
+    expect(selectedAuthorLabel(fixture)).toBe('Autores (2)');
+  });
+
+  it('shows the applied author count without overflowing when remote results change and the selector reopens', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+
+    typeAuthorSearch(fixture, 'ana');
+    http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana')
+      .flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    chooseAuthor(fixture, 'Ana');
+    expect(selectedAuthorLabel(fixture)).toBe('Seleccionar autores');
+    buttonByText(fixture, 'Listo').click();
+    fixture.detectChanges();
+
+    const filtered = expectBooks(http);
+    expect(filtered.request.params.getAll('authorIds')).toEqual(['author-1']);
     filtered.flush({ books: [] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Sin resultados');
-    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(2);
-    expect(fixture.nativeElement.querySelector('.filter-count').textContent).toBe('2');
-    expect(fixture.nativeElement.querySelector('.filter-chevron.pi-chevron-down')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.filter-button').classList).toContain('selected');
+    fixture.detectChanges();
+    expect(selectedAuthorLabel(fixture)).toBe('Autores (1)');
 
-    fixture.nativeElement.querySelector('.chip[aria-label="Quitar filtro de autor Ana"]').click();
+    await openAuthorSelect(fixture);
+
+    fixture.componentInstance.authorSuggestions.set([{ id: 'author-2', name: 'William Stallings' }]);
+    fixture.detectChanges();
+    expect(selectedAuthorLabel(fixture)).toBe('Autores (1)');
+    expect(fixture.componentInstance.authorOptions().map(({ name }) => name)).toEqual(['Ana', 'William Stallings']);
+    expect(fixture.componentInstance.selectedAuthors().map(({ id }) => id)).toEqual(['author-1']);
+    expect(selectedAuthorLabel(fixture)).not.toContain('[object Object]');
+  });
+
+  it('discards provisional selections when the actual PrimeNG overlay closes', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana')
+      .flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Ana María' }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    chooseAuthor(fixture, 'Ana');
+
+    authorSearchInput(fixture).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedAuthors()).toEqual([]);
+    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(0);
+    expect(http.match('/api/books')).toHaveLength(0);
+  });
+
+  it('removes a selected author chip and stops sending that author ID to the backend', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'a');
+    http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'a')
+      .flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    chooseAuthor(fixture, 'Ana');
+    chooseAuthor(fixture, 'Beatriz');
+    buttonByText(fixture, 'Listo').click();
+    fixture.detectChanges();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+
+    buttonByText(fixture, 'Quitar filtro de autor Ana').click();
     const remaining = expectBooks(http);
     expect(remaining.request.params.getAll('authorIds')).toEqual(['author-2']);
     remaining.flush({ books: [] });
@@ -165,129 +481,116 @@ describe('Public catalog', () => {
     expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(1);
   });
 
-  it('clears staged authors on Listo and discards staged changes when the menu is closed', async () => {
+  it('clears the Select placeholder and restores all books when the last author chip is removed', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [
+      { id: 'b1', title: 'Libro uno', authors: [], subjects: [] },
+      { id: 'b2', title: 'Libro dos', authors: [], subjects: [] },
+      { id: 'b3', title: 'Libro tres', authors: [], subjects: [] },
+      { id: 'b4', title: 'Libro cuatro', authors: [], subjects: [] },
+      { id: 'b5', title: 'Libro cinco', authors: [], subjects: [] },
+    ] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'William Stallings');
+    http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'William Stallings')
+      .flush({ authors: [{ id: 'author-1', name: 'William Stallings' }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    chooseAuthor(fixture, 'William Stallings');
+    buttonByText(fixture, 'Listo').click();
+    fixture.detectChanges();
+
+    const filtered = expectBooks(http);
+    expect(filtered.request.params.getAll('authorIds')).toEqual(['author-1']);
+    filtered.flush({ books: [{ id: 'b1', title: 'Libro uno', authors: [{ id: 'author-1', name: 'William Stallings' }], subjects: [] }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(selectedAuthorLabel(fixture)).toBe('Autores (1)');
+    expect(fixture.componentInstance.books()).toHaveLength(1);
+
+    buttonByText(fixture, 'Quitar filtro de autor William Stallings').click();
+    const unfiltered = expectBooks(http);
+    expect(unfiltered.request.params.has('authorIds')).toBe(false);
+    unfiltered.flush({ books: [
+      { id: 'b1', title: 'Libro uno', authors: [], subjects: [] },
+      { id: 'b2', title: 'Libro dos', authors: [], subjects: [] },
+      { id: 'b3', title: 'Libro tres', authors: [], subjects: [] },
+      { id: 'b4', title: 'Libro cuatro', authors: [], subjects: [] },
+      { id: 'b5', title: 'Libro cinco', authors: [], subjects: [] },
+    ] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.books()).toHaveLength(5);
+    expect(selectedAuthorLabel(fixture).trim()).toBe('Seleccionar autores');
+    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(0);
+  });
+
+  it('shows distinct empty-result and error feedback for remote author searches', async () => {
     const { fixture, http } = createCatalogFixture();
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
+    await openAuthorSelect(fixture);
 
-    openAuthorMenu(fixture, http).flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
-    fixture.detectChanges();
-    checkboxFor(fixture, 'Ana').click();
-    fixture.nativeElement.querySelector('.filter-done').click();
-    const firstSelection = expectBooks(http);
-    expect(firstSelection.request.params.getAll('authorIds')).toEqual(['author-1']);
-    firstSelection.flush({ books: [] });
+    typeAuthorSearch(fixture, 'nobody');
+    http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'nobody')
+      .flush({ authors: [] });
     await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('No se encontraron autores');
 
-    openAuthorMenu(fixture, http).flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
-    fixture.detectChanges();
-    checkboxFor(fixture, 'Beatriz').click();
-    fixture.nativeElement.querySelector('.filter-button').click();
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.filter-menu')).toBeNull();
-    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(1);
-    expect(http.match('/api/books')).toHaveLength(0);
-
-    openAuthorMenu(fixture, http).flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
-    fixture.detectChanges();
-    fixture.nativeElement.querySelector('.filter-clear').click();
-    fixture.detectChanges();
-    const checkboxes = fixture.nativeElement.querySelectorAll('.filter-option input') as NodeListOf<HTMLInputElement>;
-    expect(Array.from(checkboxes).every((input) => !input.checked)).toBe(true);
-    expect(http.match('/api/books')).toHaveLength(0);
-    fixture.nativeElement.querySelector('.filter-done').click();
-    const cleared = expectBooks(http);
-    expect(cleared.request.params.has('authorIds')).toBe(false);
-    cleared.flush({ books: [] });
+    typeAuthorSearch(fixture, 'failure');
+    http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'failure')
+      .flush({}, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
-
-    openAuthorMenu(fixture, http).flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     fixture.detectChanges();
-    checkboxFor(fixture, 'Ana').click();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.filter-menu')).toBeNull();
-    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(0);
-    expect(http.match('/api/books')).toHaveLength(0);
-
-    openAuthorMenu(fixture, http).flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
-    fixture.detectChanges();
-    checkboxFor(fixture, 'Ana').click();
-    fixture.nativeElement.querySelector('h1').click();
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.filter-menu')).toBeNull();
-    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(0);
-    expect(http.match('/api/books')).toHaveLength(0);
+    expect(fixture.nativeElement.textContent).toContain('No se pudieron cargar autores');
+    expect(fixture.componentInstance.authorSearchLoading()).toBe(false);
+    expect(fixture.componentInstance.authorSearchError()).toBe(true);
   });
 
-  it('requests all books without authentication and renders every book with multiple terms', async () => {
+  it('renders public books with all returned author and subject terms', async () => {
     const { fixture, http } = createCatalogFixture();
-    expect(fixture.nativeElement.textContent).toContain('Cargando el catálogo');
     const request = expectBooks(http);
     expect(request.request.method).toBe('GET');
     expect(request.request.headers.has('Authorization')).toBe(false);
     expect(request.request.withCredentials).toBe(false);
-    request.flush({
-      books: [
-        {
-          id: 'b1',
-          title: 'Redes',
-          authors: [
-            { id: 'a1', name: 'Ana' },
-            { id: 'a2', name: 'Beatriz' },
-          ],
-          subjects: [
-            { id: 's1', name: 'Redes' },
-            { id: 's2', name: 'Sistemas' },
-          ],
-        },
-        { id: 'b2', title: 'Algoritmos', authors: [], subjects: [] },
-      ],
-    });
+    request.flush({ books: [
+      { id: 'book-1', title: 'Redes', authors: [{ id: 'a1', name: 'Ana' }, { id: 'a2', name: 'Beatriz' }], subjects: [{ id: 's1', name: 'Redes' }, { id: 's2', name: 'Sistemas' }] },
+      { id: 'book-2', title: 'Algoritmos', authors: [], subjects: [] },
+    ] });
     await fixture.whenStable();
     const cards = fixture.nativeElement.querySelectorAll('article');
-    expect(cards.length).toBe(2);
+    expect(cards).toHaveLength(2);
     expect(cards[0].textContent).toContain('Ana');
     expect(cards[0].textContent).toContain('Beatriz');
-    expect(cards[0].querySelectorAll('.subjects li').length).toBe(2);
-    expect(cards[0].querySelector('a,button,img')).toBeNull();
+    expect(cards[0].querySelectorAll('.subjects li')).toHaveLength(2);
     expect(fixture.nativeElement.textContent).toContain('2 libros en el catálogo');
   });
 
-  it('distinguishes an empty catalog from a failed request', async () => {
-    const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
-    await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Todavía no hay libros cargados');
-    expect(fixture.nativeElement.querySelector('[role=alert]')).toBeNull();
-  });
-
-  it('offers a working retry after a failed request', async () => {
+  it('distinguishes an empty catalog from an error and retries failed catalog requests', async () => {
     const { fixture, http } = createCatalogFixture();
     expectBooks(http).flush({}, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('[role=alert]')).not.toBeNull();
-    const buttons = fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>;
-    const retryButton = Array.from(buttons).find((button) => button.textContent?.includes('Volver a intentar'));
-    expect(retryButton).toBeDefined();
-    retryButton!.click();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).not.toBeNull();
+
+    buttonByText(fixture, 'Volver a intentar').click();
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('[role=alert]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Todavía no hay libros cargados');
   });
 
-  it('cancels a pending request when leaving the page', () => {
-    const fixture = TestBed.createComponent(CatalogPage);
-    const http = TestBed.inject(HttpTestingController);
-    fixture.detectChanges();
-    const pendingAuthors = openAuthorMenu(fixture, http);
-    const bookRequest = expectBooks(http);
-    const subjectsRequest = http.expectOne('/api/subjects');
+  it('cancels a pending author search when the page is destroyed', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    const pendingAuthors = http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana');
     fixture.destroy();
-    expect(bookRequest.cancelled).toBe(true);
     expect(pendingAuthors.cancelled).toBe(true);
-    expect(subjectsRequest.cancelled).toBe(true);
   });
 
   it('loads subjects independently and configures PrimeNG Select for searchable multiple selection', async () => {
@@ -302,7 +605,7 @@ describe('Public catalog', () => {
     fixture.detectChanges();
 
     const root = openSubjectSelector(fixture);
-    const select = fixture.debugElement.query(By.directive(Select)).componentInstance as Select;
+    const select = fixture.debugElement.query(By.css('p-select.subject-select')).componentInstance as Select;
     expect(select.multiple()).toBe(true);
     expect(select.filter()).toBe(true);
     expect(select.optionLabel()).toBe('name');
@@ -311,20 +614,21 @@ describe('Public catalog', () => {
     expect(root.textContent).not.toContain('Recientes');
     expect(root.textContent).not.toContain('Mostrar lista completa');
 
-    const filter = root.querySelector('input.p-select-filter') as HTMLInputElement;
+    const panel = overlayFor(root, 'catalog-subject-overlay');
+    const filter = panel.querySelector('input.p-select-filter') as HTMLInputElement;
     filter.value = 'sist';
     filter.dispatchEvent(new Event('input', { bubbles: true }));
     fixture.detectChanges();
-    const options = Array.from(root.querySelectorAll('.p-select-option'));
+    const options = Array.from(panel.querySelectorAll('.p-select-option'));
     expect(options).toHaveLength(1);
     expect(options[0]?.textContent).toContain('Sistemas');
     expect(options[0]?.querySelector('p-checkbox')).not.toBeNull();
-    expect(root.textContent).toContain('Limpiar');
-    expect(root.textContent).toContain('Listo');
-    expect(root.querySelector('.filter-clear')).not.toBeNull();
-    expect(root.querySelector('.filter-done')).not.toBeNull();
+    expect(panel.textContent).toContain('Limpiar');
+    expect(panel.textContent).toContain('Listo');
+    expect(panel.querySelector('.filter-clear')).not.toBeNull();
+    expect(panel.querySelector('.filter-done')).not.toBeNull();
     expect(http.match('/api/books')).toHaveLength(0);
-    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+    panel.querySelector('.filter-footer button:last-child')?.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     );
     fixture.detectChanges();
@@ -345,6 +649,7 @@ describe('Public catalog', () => {
     chooseSubject(root, 'Redes');
     fixture.detectChanges();
     expect(fixture.componentInstance.selectedSubjects()).toEqual([]);
+    expect(root.querySelector('p-select.subject-select')?.textContent).not.toContain('(');
     expect(fixture.componentInstance.books().map(({ id }) => id)).toEqual(['book-1']);
     expect(root.querySelector('app-book-card')).not.toBeNull();
     expect(http.match('/api/books')).toHaveLength(0);
@@ -353,7 +658,8 @@ describe('Public catalog', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.selectedSubjects()).toEqual([]);
     expect(http.match('/api/books')).toHaveLength(0);
-    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+    expect(root.querySelector('p-select.subject-select')?.textContent).not.toContain('(');
+    overlayFor(root, 'catalog-subject-overlay').querySelector('.filter-footer button:last-child')?.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     );
     fixture.detectChanges();
@@ -366,7 +672,7 @@ describe('Public catalog', () => {
     openSubjectSelector(fixture);
     expect(subjectOption(root, 'Redes')?.getAttribute('aria-selected')).toBe('true');
     expect(subjectOption(root, 'Sistemas')?.getAttribute('aria-selected')).toBe('true');
-    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+    overlayFor(root, 'catalog-subject-overlay').querySelector('.filter-footer button:last-child')?.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     );
     fixture.detectChanges();
@@ -380,12 +686,12 @@ describe('Public catalog', () => {
     expect(subjectSelect?.classList.contains('selected')).toBe(false);
     expect(subjectSelect?.textContent).toContain('Materias');
     expect(subjectSelect?.textContent).toContain('(2)');
-    root.querySelector('.filter-button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    fixture.detectChanges();
-    http.expectOne('/api/authors').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
-    checkboxFor(fixture, 'Ana').click();
-    root.querySelector('.filter-done')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    chooseAuthor(fixture, 'Ana');
+    buttonByText(fixture, 'Listo').click();
     fixture.detectChanges();
     const withAuthor = expectBooks(http);
     expect(withAuthor.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id, subjects[1]?.id]);
@@ -424,10 +730,12 @@ describe('Public catalog', () => {
     fixture.detectChanges();
 
     const root = fixture.nativeElement as HTMLElement;
-    openAuthorMenu(fixture, http).flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
-    checkboxFor(fixture, 'Ana').click();
-    root.querySelector('.filter-done')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    chooseAuthor(fixture, 'Ana');
+    buttonByText(fixture, 'Listo').click();
     fixture.detectChanges();
     const withAuthor = expectBooks(http);
     withAuthor.flush({ books: [] });
@@ -448,7 +756,7 @@ describe('Public catalog', () => {
     chooseSubject(root, 'Sistemas');
     fixture.detectChanges();
     expect(http.match('/api/books')).toHaveLength(0);
-    root.querySelector('input.p-select-filter')?.dispatchEvent(new KeyboardEvent('keydown', {
+    overlayFor(root, 'catalog-subject-overlay').querySelector('input.p-select-filter')?.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'Escape', code: 'Escape', bubbles: true,
     }));
     fixture.detectChanges();
@@ -462,7 +770,7 @@ describe('Public catalog', () => {
     expect(root.querySelectorAll('[aria-label^="Quitar materia "]')).toHaveLength(0);
     expect(http.match('/api/books')).toHaveLength(0);
 
-    const subjectSelectComponent = fixture.debugElement.query(By.directive(Select)).componentInstance as Select;
+    const subjectSelectComponent = fixture.debugElement.query(By.css('p-select.subject-select')).componentInstance as Select;
     subjectSelectComponent.show();
     fixture.detectChanges();
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -470,7 +778,7 @@ describe('Public catalog', () => {
     fixture.detectChanges();
     expect(subjectOption(root, 'Redes')?.getAttribute('aria-selected')).toBe('false');
     expect(subjectOption(root, 'Sistemas')?.getAttribute('aria-selected')).toBe('false');
-    root.querySelector('.filter-footer button:last-child')?.dispatchEvent(
+    overlayFor(root, 'catalog-subject-overlay').querySelector('.filter-footer button:last-child')?.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     );
     fixture.detectChanges();
@@ -487,12 +795,117 @@ describe('Public catalog', () => {
     await fixture.whenStable();
   });
 
+  it('clears title, authors, and subjects together and reloads the unfiltered catalog', async () => {
+    const fixture = TestBed.createComponent(CatalogPage);
+    const http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    http.expectOne('/api/books').flush({ books: [] });
+    http.expectOne('/api/subjects').flush({ subjects });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    chooseAuthor(fixture, 'Ana');
+    buttonByText(fixture, 'Listo').click();
+    const byAuthor = expectBooks(http);
+    expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
+    byAuthor.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    openSubjectSelector(fixture);
+    chooseSubject(root, 'Redes');
+    overlayFor(root, 'catalog-subject-overlay').querySelector('.filter-done')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    const byAuthorAndSubject = expectBooks(http);
+    expect(byAuthorAndSubject.request.params.getAll('authorIds')).toEqual(['author-1']);
+    expect(byAuthorAndSubject.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id]);
+    byAuthorAndSubject.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const title = root.querySelector('#catalog-title-search') as HTMLInputElement;
+    title.value = 'sin coincidencias';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    const noResults = expectBooks(http);
+    expect(noResults.request.params.get('title')).toBe('sin coincidencias');
+    expect(noResults.request.params.getAll('authorIds')).toEqual(['author-1']);
+    expect(noResults.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id]);
+    noResults.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(root.querySelectorAll('[aria-label^="Quitar filtro de autor "]')).toHaveLength(1);
+    expect(root.querySelectorAll('[aria-label^="Quitar materia "]')).toHaveLength(1);
+    buttonByText(fixture, 'Limpiar todos los filtros').click();
+
+    const unfiltered = expectBooks(http);
+    expect(unfiltered.request.params.has('title')).toBe(false);
+    expect(unfiltered.request.params.has('authorIds')).toBe(false);
+    expect(unfiltered.request.params.has('subjectIds')).toBe(false);
+    unfiltered.flush({ books: [
+      { id: 'book-1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [subjects[0]!] },
+      { id: 'book-2', title: 'Algoritmos', authors: [], subjects: [] },
+    ] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(title.value).toBe('');
+    expect(fixture.componentInstance.titleQuery()).toBe('');
+    expect(fixture.componentInstance.selectedAuthors()).toEqual([]);
+    expect(fixture.componentInstance.draftAuthors()).toEqual([]);
+    expect(fixture.componentInstance.selectedSubjects()).toEqual([]);
+    expect(fixture.componentInstance.draftSubjects()).toEqual([]);
+    expect(root.querySelectorAll('.chip')).toHaveLength(0);
+    expect(selectedAuthorLabel(fixture)).toBe('Seleccionar autores');
+    expect(root.querySelector('p-select.subject-select')?.textContent).toContain('Materias');
+    expect(root.querySelector('p-select.subject-select')?.textContent).not.toContain('(1)');
+    expect(root.querySelectorAll('app-book-card')).toHaveLength(2);
+  });
+
+  it('lets the empty-results action remove an author-only filter', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    chooseAuthor(fixture, 'Ana');
+    buttonByText(fixture, 'Listo').click();
+    const authorOnly = expectBooks(http);
+    expect(authorOnly.request.params.getAll('authorIds')).toEqual(['author-1']);
+    authorOnly.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.title-empty-state h2')?.textContent).toContain('Sin resultados');
+    buttonByText(fixture, 'Limpiar todos los filtros').click();
+    const unfiltered = expectBooks(http);
+    expect(unfiltered.request.params.has('authorIds')).toBe(false);
+    expect(unfiltered.request.params.has('title')).toBe(false);
+    expect(unfiltered.request.params.has('subjectIds')).toBe(false);
+    unfiltered.flush({ books: [{ id: 'book-1', title: 'Redes', authors: [], subjects: [] }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedAuthors()).toEqual([]);
+    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelectorAll('app-book-card')).toHaveLength(1);
+  });
+
   it('shows subject loading errors, retries, and distinguishes an empty independent subject list', async () => {
     const fixture = TestBed.createComponent(CatalogPage);
     const http = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
     http.expectOne('/api/books').flush({ books: [] });
-    const select = fixture.debugElement.query(By.directive(Select)).componentInstance as Select;
+    const select = fixture.debugElement.query(By.css('p-select.subject-select')).componentInstance as Select;
     expect(select.loading()).toBe(true);
     expect(select.disabled()).toBe(true);
     http.expectOne('/api/subjects').flush({}, { status: 503, statusText: 'Unavailable' });
@@ -507,5 +920,42 @@ describe('Public catalog', () => {
     expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(root.textContent).toContain('No hay materias disponibles');
     expect(root.textContent).toContain('Todavía no hay libros cargados');
+  });
+  it('clears provisional authors on Listo without applying them early', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'a');
+    expectAuthorSearch(http, 'a').flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
+    await fixture.whenStable();
+    chooseAuthor(fixture, 'Ana');
+    expect(fixture.componentInstance.draftAuthors().map(({ id }) => id)).toEqual(['author-1']);
+    buttonByText(fixture, 'Limpiar').click();
+    expect(fixture.componentInstance.draftAuthors()).toEqual([]);
+    expect(fixture.componentInstance.selectedAuthors()).toEqual([]);
+    expect(http.match('/api/books')).toHaveLength(0);
+
+    buttonByText(fixture, 'Listo').click();
+    const cleared = expectBooks(http);
+    expect(cleared.request.params.has('authorIds')).toBe(false);
+    cleared.flush({ books: [] });
+    await fixture.whenStable();
+  });
+  it('cancels catalog, subject, and pending author requests when leaving the page', async () => {
+    const fixture = TestBed.createComponent(CatalogPage);
+    const http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    const pendingBooks = expectBooks(http);
+    const pendingSubjects = http.expectOne('/api/subjects');
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    const pendingAuthors = expectAuthorSearch(http, 'ana');
+
+    fixture.destroy();
+    expect(pendingBooks.cancelled).toBe(true);
+    expect(pendingSubjects.cancelled).toBe(true);
+    expect(pendingAuthors.cancelled).toBe(true);
   });
 });

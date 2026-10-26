@@ -16,6 +16,7 @@ test('Mis préstamos pide login, conserva la ruta y restaura la sesión al recar
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/books') return route.fulfill({ json: { books: [] } });
+    if (path === '/api/subjects') return route.fulfill({ json: { subjects: [] } });
     if (path === '/api/auth/session') return route.fulfill({
       status: authenticated ? 200 : 401,
       json: authenticated ? session() : { error: { code: 'AUTH_REQUIRED' } },
@@ -73,7 +74,9 @@ test('la URL directa espera la sesión y permite recuperarse de un error de comp
   let resolveSession!: () => void;
   const waiting = new Promise<void>(resolve => { resolveSession = resolve; });
   await page.route('**/api/**', async route => {
-    if (new URL(route.request().url()).pathname !== '/api/auth/session') throw new Error('API inesperada');
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/subjects') return route.fulfill({ json: { subjects: [] } });
+    if (path !== '/api/auth/session') throw new Error('API inesperada');
     await waiting;
     return route.fulfill({ status: fail ? 503 : 200,
       json: fail ? { error: { code: 'SERVICE_UNAVAILABLE' } } : session() });
