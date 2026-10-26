@@ -70,7 +70,9 @@ jobs:
         run: npm run build
 
       - name: Install test browser
-        run: npm exec --workspace frontend -- playwright install --with-deps chromium
+        timeout-minutes: 5
+        # ubuntu-24.04 already includes the system libraries used by Chrome.
+        run: npm exec --workspace frontend -- playwright install chromium
 
       - name: Run browser tests
         run: npm run test:e2e --workspace frontend

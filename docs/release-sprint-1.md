@@ -44,6 +44,9 @@ servicio temporal. No se configuran secretos ni conexiones de Neon en CI.
 Las pruebas de navegador interceptan la API; no comprueban un despliegue real.
 En CI no se permite dejar pruebas Playwright con `.only`. Los fallos de
 navegador conservan sus trazas durante siete días como artefactos del job.
+La imagen `ubuntu-24.04` ya incluye las bibliotecas de sistema de Chrome;
+se descarga únicamente Chromium, sin actualizar paquetes de Ubuntu en cada
+ejecución. La instalación tiene un límite de cinco minutos.
 
 La protección de `main` debe exigir PR y **Release checks** aprobado sobre una
 rama actualizada, bloquear force pushes y borrado, y aplicar también a admins.
