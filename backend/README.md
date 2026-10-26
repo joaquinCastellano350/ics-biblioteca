@@ -59,7 +59,7 @@ El 22/10/2026 se aplicó la migración del catálogo a la rama `production` de N
 conservando la migración de cuentas que ya estaba aplicada. Ver el
 [registro de aplicación y verificación](../docs/migracion-catalogo-neon.md).
 
-El esquema Prisma incluye `universities`, `users` y `sessions`, alineados con Confluence v4. La primera migración conserva un solo `email` normalizado y único, las FK y el vencimiento absoluto de seis horas. La sesión guarda solo el SHA-256 del token; las contraseñas usan Argon2id. Las tablas de circulación pertenecen a historias posteriores.
+El esquema Prisma incluye `universities`, `users` y `sessions`, alineados con Confluence v4. La primera migración conserva un solo `email` normalizado y único, las FK y el vencimiento absoluto de seis horas. La sesión guarda solo el SHA-256 del token; las contraseñas usan Argon2id. SCRUM-18 incorpora además `loans`, `queue_entries` y `reservations` en una nueva migración, aplicada a `production` de Neon el 26/10/2026; ver [la base compartida de circulación y la verificación](../docs/scrum-18-persistencia.md).
 
 El módulo único `src/accounts/` contiene registro y login. `accounts.controller.ts` reúne rutas, cookies y middleware HTTP; `accounts.service.ts` y `registration.service.ts` coordinan sus respectivos contratos de persistencia. Ambos usan `credentials.ts`, `sessions.ts`, `auth.response.ts` y `account-error.ts`. Los adaptadores Prisma llaman a `prisma-session.ts` dentro de su transacción: crear la sesión y revocar la anterior son atómicos; registro incluye además crear el usuario. El reloj de PostgreSQL determina las seis horas y el atributo `Expires` de la cookie. `server.ts` conecta ambos servicios a la misma base.
 
@@ -99,3 +99,17 @@ Con `NODE_ENV=production`, `server.ts` detecta el build de Angular en
 `/api`. Las rutas públicas de Angular
 se resuelven con `index.html`; una ruta API inexistente sigue devolviendo JSON
 404 y no recibe el HTML de la aplicación.
+
+## Base compartida de circulación — SCRUM-18
+
+`src/circulation/` reúne el contrato de ocupación y disponibilidad, la interfaz
+de repositorio, su lectura Prisma/PostgreSQL y el controlador del conteo.
+La lectura utiliza un único instante de PostgreSQL y no modifica préstamos,
+reservas ni colas. Además de descontar ocupaciones vigentes, retiene la capacidad
+que debe ofrecerse primero a las esperas elegibles.
+
+No expone rutas nuevas. `GET /api/books` reúne metadatos y disponibilidad por lote
+en una respuesta pública; la tarjeta muestra el conteo y el grisado. Los métodos de
+préstamos, cola, turnos, vencimientos y notificaciones se incorporarán en sus
+historias, reutilizando la persistencia y esta carpeta. SCRUM-23 queda pendiente
+de desarrollo e integración por su responsable.

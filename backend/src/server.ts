@@ -8,6 +8,7 @@ import { RegistrationService } from './accounts/registration.service.js';
 import { PostgresRegistrationRepository } from './accounts/registration.repository.js';
 import { BookRepository } from './book/book-repository.js';
 import { SubjectRepository } from './subject/subject-repository.js';
+import { CirculationRepository } from './circulation/circulation-repository.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +21,7 @@ const server = createApp({
   accounts: new AccountsService(new PrismaAccountsRepository(database)),
   registrationService: new RegistrationService(new PostgresRegistrationRepository(database)),
   books: new BookRepository(database),
+  circulation: new CirculationRepository(database),
   subjects: new SubjectRepository(database),
   ...(production && existsSync(join(frontendDirectory, 'index.html')) ? { frontendDirectory } : {}),
 }).listen(port, () => { console.log(`API disponible en el puerto ${port}.`); });

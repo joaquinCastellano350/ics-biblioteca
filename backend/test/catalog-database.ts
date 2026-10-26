@@ -28,6 +28,7 @@ export async function catalogDatabase() {
   });
   return {
     client,
+    postgres: database,
     async close() {
       await client.$disconnect();
       await server.stop();

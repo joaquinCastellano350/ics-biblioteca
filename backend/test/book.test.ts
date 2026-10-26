@@ -4,12 +4,17 @@ import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { createApp } from '../src/app.js';
 import type { BookRepositoryInterface } from '../src/book/book-repository-interface.js';
+import type { CirculationRepositoryInterface } from '../src/circulation/circulation-repository-interface.js';
 
-async function withCatalog(books: BookRepositoryInterface, check: (url: string) => Promise<void>) {
+async function withCatalog(books: BookRepositoryInterface, check: (url: string) => Promise<void>,
+  circulation: CirculationRepositoryInterface = {
+    findOccupancy: async (ids) => ids.map((bookId) => ({ bookId, totalCopies: 4, activeLoans: 1, heldReservations: 1, eligibleWaiters: 0 })),
+  }) {
   const app = createApp({
     checkDatabase: async () => {},
     checkStorage: async () => {},
     books,
+    circulation,
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -55,7 +60,8 @@ test('el catálogo público conserva todos los libros y metadatos y oculta datos
     assert.equal(result.books[0].authors.length, 2);
     assert.equal(result.books[0].subjects.length, 2);
     assert.ok(!JSON.stringify(result).includes('private.pdf'));
-    assert.deepEqual(Object.keys(result.books[0]), ['id', 'title', 'authors', 'subjects']);
+    assert.deepEqual(Object.keys(result.books[0]), ['id', 'title', 'authors', 'subjects', 'availability']);
+    assert.deepEqual(result.books[0].availability, { availableCopies: 2, totalCopies: 4 });
     const filtered = await fetch(`${url}/api/books?title=red%20parcial&authorIds=a1&authorIds=a3`);
     assert.equal(filtered.status, 200);
     assert.deepEqual(receivedCriteria, { title: 'red parcial', authorIds: ['a1', 'a3'] });
@@ -121,4 +127,44 @@ test('SCRUM-13 no expone escrituras ni una ficha de detalle', async () => {
     assert.equal(response.headers.get('allow'), 'GET');
     assert.equal((await fetch(`${url}/api/books/1`)).status, 404);
   });
+});
+
+test('el catálogo consulta disponibilidad en un solo lote y solo expone el conteo público', async () => {
+  const ids = ['uno', 'dos'];
+  let calls = 0;
+  await withCatalog({
+    findAll: async () => ids.map((id) => ({ id, title: id, authors: [], subjects: [] })),
+    findAuthors: async () => [],
+  }, async (url) => {
+    const response = await fetch(`${url}/api/books`);
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(calls, 1);
+    assert.deepEqual(result.books.map((book: { availability: unknown }) => book.availability), [
+      { availableCopies: 0, totalCopies: 2 }, { availableCopies: 0, totalCopies: 2 },
+    ]);
+    assert.ok(!JSON.stringify(result).includes('eligibleWaiters'));
+    assert.equal((await fetch(`${url}/api/availability`)).status, 404);
+  }, {
+    findOccupancy: async (bookIds) => {
+      calls++;
+      assert.deepEqual(bookIds, ids);
+      return bookIds.map((bookId) => ({ bookId, totalCopies: 2, activeLoans: 1, heldReservations: 1, eligibleWaiters: 0 }));
+    },
+  });
+});
+
+test('un fallo o un resultado incompleto de disponibilidad no inventa cupos', async () => {
+  for (const fail of [false, true]) {
+    await withCatalog({
+      findAll: async () => [{ id: 'uno', title: 'Libro', authors: [], subjects: [] }],
+      findAuthors: async () => [],
+    }, async (url) => {
+      const response = await fetch(`${url}/api/books`);
+      assert.equal(response.status, 503);
+      const body = await response.text();
+      assert.equal(JSON.parse(body).error.code, 'CATALOG_UNAVAILABLE');
+      assert.ok(!body.includes('privado'));
+    }, { findOccupancy: async () => { if (fail) throw new Error('detalle privado'); return []; } });
+  }
 });

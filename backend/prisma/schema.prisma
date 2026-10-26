@@ -18,15 +18,18 @@ model University {
 }
 
 model User {
-  id           String     @id @default(uuid()) @db.Uuid
-  firstName    String     @map("first_name")
-  lastName     String     @map("last_name")
-  universityId String     @map("university_id") @db.Uuid
-  email        String     @unique
-  passwordHash String     @map("password_hash")
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  university   University @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  id           String        @id @default(uuid()) @db.Uuid
+  firstName    String        @map("first_name")
+  lastName     String        @map("last_name")
+  universityId String        @map("university_id") @db.Uuid
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  university   University    @relation(fields: [universityId], references: [id], onDelete: Restrict)
   sessions     Session[]
+  loans        Loan[]
+  queueEntries QueueEntry[]
+  reservations Reservation[]
 
   @@map("users")
 }
@@ -54,6 +57,9 @@ model Book {
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   authors      BookAuthor[]
   subjects     BookSubject[]
+  loans        Loan[]
+  queueEntries QueueEntry[]
+  reservations Reservation[]
 
   @@map("books")
 }
@@ -94,4 +100,58 @@ model BookSubject {
   @@id([bookId, subjectId])
   @@index([subjectId, bookId])
   @@map("book_subjects")
+}
+
+// SCRUM-18: persistencia compartida para calcular disponibilidad.
+// Los CHECK e índices parciales se mantienen en la migración SQL.
+model QueueEntry {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String       @map("user_id") @db.Uuid
+  bookId      String       @map("book_id") @db.Uuid
+  orderSeq    BigInt       @unique @default(autoincrement()) @map("order_seq")
+  joinedAt    DateTime     @default(now()) @map("joined_at") @db.Timestamptz(6)
+  state       String       @default("WAITING") @db.Text
+  closedAt    DateTime?    @map("closed_at") @db.Timestamptz(6)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  book        Book         @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  reservation Reservation?
+
+  @@unique([id, userId, bookId])
+  @@map("queue_entries")
+}
+
+model Reservation {
+  id           String     @id @default(uuid()) @db.Uuid
+  queueEntryId String     @unique @map("queue_entry_id") @db.Uuid
+  userId       String     @map("user_id") @db.Uuid
+  bookId       String     @map("book_id") @db.Uuid
+  offeredAt    DateTime   @default(now()) @map("offered_at") @db.Timestamptz(6)
+  expiresAt    DateTime   @map("expires_at") @db.Timestamptz(6)
+  state        String     @default("HELD") @db.Text
+  closedAt     DateTime?  @map("closed_at") @db.Timestamptz(6)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  book         Book       @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  queueEntry   QueueEntry @relation(fields: [queueEntryId, userId, bookId], references: [id, userId, bookId], onDelete: Restrict)
+  loan         Loan?
+
+  @@unique([id, userId, bookId])
+  // Prisma exige la clave completa para representar esta relación 1:1 compuesta.
+  @@unique([queueEntryId, userId, bookId])
+  @@map("reservations")
+}
+
+model Loan {
+  id            String       @id @default(uuid()) @db.Uuid
+  userId        String       @map("user_id") @db.Uuid
+  bookId        String       @map("book_id") @db.Uuid
+  reservationId String?      @unique @map("reservation_id") @db.Uuid
+  startedAt     DateTime     @default(now()) @map("started_at") @db.Timestamptz(6)
+  dueAt         DateTime     @map("due_at") @db.Timestamptz(6)
+  closedAt      DateTime?    @map("closed_at") @db.Timestamptz(6)
+  user          User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  book          Book         @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  reservation   Reservation? @relation(fields: [reservationId, userId, bookId], references: [id, userId, bookId], onDelete: Restrict)
+
+  @@unique([reservationId, userId, bookId])
+  @@map("loans")
 }
