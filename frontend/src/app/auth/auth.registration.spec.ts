@@ -86,7 +86,8 @@ describe('registro y login comparten la identidad y coordinan solicitudes', () =
     auth.register(data).subscribe(); const request = http.expectOne('/api/auth/register');
     vi.advanceTimersByTime(1000); expect(auth.session()).toBeNull();
     request.flush(response); expect(auth.status()).toBe('authenticated');
-    vi.advanceTimersByTime(6 * 60 * 60 * 1000 - 1); expect(auth.status()).toBe('authenticated');
+    // El segundo consumido esperando la respuesta no se suma a las seis horas.
+    vi.advanceTimersByTime(6 * 60 * 60 * 1000 - 1000 - 1); expect(auth.status()).toBe('authenticated');
     vi.advanceTimersByTime(1); expect(auth.status()).toBe('anonymous');
   });
 

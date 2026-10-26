@@ -4,6 +4,10 @@ import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import { Checkbox } from 'primeng/checkbox';
 import { Select } from 'primeng/select';
+import { IconField } from 'primeng/iconfield';
+import { InputIcon } from 'primeng/inputicon';
+import { InputText } from 'primeng/inputtext';
+import { vi } from 'vitest';
 import { CatalogPage } from './catalog-page';
 import { appConfig } from '../app.config';
 
@@ -16,6 +20,10 @@ function createCatalogFixture() {
 
 function expectBooks(http: HttpTestingController) {
   return http.expectOne((request) => request.url === '/api/books');
+}
+
+function expectAuthorSearch(http: HttpTestingController, query: string) {
+  return http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === query);
 }
 
 function selectRoot(fixture: ReturnType<typeof createCatalogFixture>['fixture']): HTMLElement {
@@ -78,6 +86,80 @@ describe('Public catalog author filtering', () => {
 
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
+  it('renders the PrimeNG title search, searches while typing, and shows Sin resultados', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
+    expect(fixture.debugElement.query(By.directive(InputText))?.nativeElement).toBe(input);
+    expect(fixture.debugElement.query(By.directive(IconField))).not.toBeNull();
+    expect(fixture.debugElement.query(By.directive(InputIcon))).not.toBeNull();
+
+    input.value = 'cien';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const search = http.expectOne('/api/books?title=cien');
+    expect(search.request.params.get('title')).toBe('cien');
+    search.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.title-empty-state h2')?.textContent).toContain('Sin resultados');
+
+    buttonByText(fixture, 'Limpiar búsqueda').click();
+    const cleared = expectBooks(http);
+    expect(cleared.request.params.has('title')).toBe(false);
+    cleared.flush({ books: [] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(input.value).toBe('');
+    expect(fixture.nativeElement.querySelector('.title-empty-state')).toBeNull();
+  });
+
+  it('combines title and author criteria and keeps authors when the title is cleared', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [
+      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+    ] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    chooseAuthor(fixture, 'Ana');
+    buttonByText(fixture, 'Listo').click();
+    const byAuthor = expectBooks(http);
+    expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
+    byAuthor.flush({ books: [
+      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+    ] });
+    await fixture.whenStable();
+
+    const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
+    title.value = 'red';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    const combined = expectBooks(http);
+    expect(combined.request.params.get('title')).toBe('red');
+    expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
+    combined.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    await fixture.whenStable();
+
+    title.value = '';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    const titleCleared = expectBooks(http);
+    expect(titleCleared.request.params.has('title')).toBe(false);
+    expect(titleCleared.request.params.getAll('authorIds')).toEqual(['author-1']);
+    titleCleared.flush({ books: [
+      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+    ] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('Algoritmos');
+  });
+
   it('opens PrimeNG Select without fetching all authors and prompts for a search term', async () => {
     const { fixture, http } = createCatalogFixture();
     expectBooks(http).flush({ books: [] });
@@ -93,6 +175,104 @@ describe('Public catalog author filtering', () => {
     expect(fixture.nativeElement.textContent).toContain('Escribí un término para buscar autores');
     expect(fixture.nativeElement.textContent).not.toContain('Recientes');
     expect(fixture.nativeElement.textContent).not.toContain('Mostrar lista completa');
+  });
+
+  it('moves focus into the author search and returns focus to the Select when confirmed or cancelled', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    const select = selectRoot(fixture);
+    await openAuthorSelect(fixture);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(document.activeElement).toBe(authorSearchInput(fixture));
+    buttonByText(fixture, 'Listo').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(select.querySelector('.p-select-label'));
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+
+    await openAuthorSelect(fixture);
+    authorSearchInput(fixture).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await fixture.whenStable();
+    expect(fixture.componentInstance.authorMenuOpen()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.p-select-overlay')).toBeNull();
+    expect(document.activeElement).toBe(select.querySelector('.p-select-label'));
+    for (const request of http.match('/api/books')) request.flush({ books: [] });
+  });
+
+  it('does not focus the author search if PrimeNG closes before the next render', () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    fixture.detectChanges();
+    const searchInput = document.createElement('input');
+    searchInput.setAttribute('aria-label', 'Buscar autores');
+    fixture.nativeElement.append(searchInput);
+    const focus = vi.spyOn(searchInput, 'focus');
+    const originalSetTimeout = globalThis.setTimeout;
+    let focusTimer: (() => void) | undefined;
+    const timers = vi.spyOn(globalThis, 'setTimeout');
+    timers.mockImplementation((handler, delay) => {
+      if (delay === 50) {
+        if (typeof handler === 'function') focusTimer = handler as () => void;
+        return 0;
+      }
+      return originalSetTimeout(handler, delay);
+    });
+
+    try {
+      fixture.componentInstance.onAuthorMenuShow();
+      fixture.componentInstance.onAuthorMenuHide();
+      fixture.detectChanges();
+
+      expect(focusTimer).toBeDefined();
+      focusTimer?.();
+
+      expect(fixture.componentInstance.authorMenuOpen()).toBe(false);
+      expect(focus).not.toHaveBeenCalled();
+    } finally {
+      timers.mockRestore();
+    }
+  });
+
+  it('keeps the title filter when all selected authors are removed', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    await openAuthorSelect(fixture);
+    typeAuthorSearch(fixture, 'ana');
+    expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
+    await fixture.whenStable();
+    chooseAuthor(fixture, 'Ana');
+    buttonByText(fixture, 'Listo').click();
+
+    const byAuthor = expectBooks(http);
+    expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
+    byAuthor.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    await fixture.whenStable();
+
+    const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
+    title.value = 'red';
+    title.dispatchEvent(new Event('input', { bubbles: true }));
+    const combined = expectBooks(http);
+    expect(combined.request.params.get('title')).toBe('red');
+    expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
+    combined.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    await fixture.whenStable();
+
+    buttonByText(fixture, 'Quitar filtro de autor Ana').click();
+    const titleOnly = expectBooks(http);
+    expect(titleOnly.request.params.get('title')).toBe('red');
+    expect(titleOnly.request.params.has('authorIds')).toBe(false);
+    titleOnly.flush({ books: [{ id: 'b2', title: 'Redes avanzadas', authors: [], subjects: [] }] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(title.value).toBe('red');
+    expect(fixture.nativeElement.textContent).toContain('Redes avanzadas');
+    expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(0);
   });
 
   it('sends PrimeNG filter input to the remote author search endpoint', async () => {

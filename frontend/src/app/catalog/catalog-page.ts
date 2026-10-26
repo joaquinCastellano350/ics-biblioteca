@@ -1,24 +1,21 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ViewChild, computed, inject, signal } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, Injector, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { BookCard } from './book-card';
-import { CatalogService } from './catalog-service';
-import type { Book } from './book';
+import { CatalogService, type CatalogSearchCriteria } from './catalog-service';
+import type { Book, CatalogTerm } from './book';
 import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
-import { SelectModule } from 'primeng/select';
-import { Select } from 'primeng/select';
-import type { CatalogTerm } from './book';
+import { SelectModule, Select } from 'primeng/select';
+import { InputTextModule } from 'primeng/inputtext';
+import { IconFieldModule } from 'primeng/iconfield';
+import { InputIconModule } from 'primeng/inputicon';
 import { EMPTY, Subject, catchError, switchMap } from 'rxjs';
-
-interface CatalogSearchCriteria {
-  readonly authorIds?: readonly string[];
-}
 
 @Component({
   selector: 'app-catalog-page',
-  imports: [BookCard, ButtonModule, CheckboxModule, ProgressSpinnerModule, SelectModule, FormsModule],
+  imports: [BookCard, ButtonModule, CheckboxModule, ProgressSpinnerModule, SelectModule, FormsModule, InputTextModule, IconFieldModule, InputIconModule],
   templateUrl: './catalog-page.html',
   styleUrl: './catalog-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -27,8 +24,11 @@ export class CatalogPage {
   @ViewChild(Select) private authorSelect?: Select;
   private readonly catalog = inject(CatalogService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly injector = inject(Injector);
   readonly books = signal<readonly Book[]>([]);
   readonly status = signal<'loading' | 'ready' | 'error'>('loading');
+  readonly titleQuery = signal('');
   readonly selectedAuthors = signal<readonly CatalogTerm[]>([]);
   readonly draftAuthors = signal<readonly CatalogTerm[]>([]);
   readonly authorSuggestions = signal<CatalogTerm[]>([]);
@@ -43,12 +43,13 @@ export class CatalogPage {
   readonly authorSearchLoading = signal(false);
   readonly authorSearchError = signal(false);
   private applyOnHide = false;
+  private restoreAuthorFocus = true;
   private criteria: CatalogSearchCriteria = {};
-  private readonly bookSearches = new Subject<CatalogSearchCriteria>();
+  private readonly searches = new Subject<CatalogSearchCriteria>();
   private readonly authorSearches = new Subject<string>();
 
   constructor() {
-    this.bookSearches.pipe(
+    this.searches.pipe(
       switchMap((criteria) => {
         this.status.set('loading');
         return this.catalog.findAll(criteria).pipe(
@@ -60,7 +61,7 @@ export class CatalogPage {
       this.books.set(books);
       this.status.set('ready');
     });
-    this.bookSearches.next({});
+    this.searches.next({});
     this.authorSearches.pipe(
       switchMap((query) => {
         this.authorSearchLoading.set(true);
@@ -88,12 +89,20 @@ export class CatalogPage {
     this.authorSearchLoading.set(false);
     this.authorSearchError.set(false);
     this.authorMenuOpen.set(true);
+    afterNextRender(() => {
+      setTimeout(() => {
+        const input = this.host.nativeElement.querySelector('input[aria-label="Buscar autores"]') as HTMLInputElement | null;
+        if (this.authorMenuOpen()) input?.focus();
+      }, 50);
+    }, { injector: this.injector });
   }
 
   onAuthorMenuHide(): void {
     this.authorMenuOpen.set(false);
     if (!this.applyOnHide) this.draftAuthors.set([...this.selectedAuthors()]);
     this.applyOnHide = false;
+    if (this.restoreAuthorFocus) afterNextRender(() => this.authorSelect?.focus(), { injector: this.injector });
+    this.restoreAuthorFocus = true;
   }
 
   searchAuthors(query: string): void {
@@ -110,9 +119,7 @@ export class CatalogPage {
     this.draftAuthors.set(selected ? [...authors, author] : authors);
   }
 
-  clearDraftAuthors(): void {
-    this.draftAuthors.set([]);
-  }
+  clearDraftAuthors(): void { this.draftAuthors.set([]); }
 
   applyAuthorMenu(): void {
     this.setAppliedAuthors(this.draftAuthors());
@@ -126,17 +133,42 @@ export class CatalogPage {
     this.draftAuthors.set([...selected]);
   }
 
+  @HostListener('document:keydown', ['$event'])
+  closeOnEscape(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.authorMenuOpen()) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.authorSelect?.hide();
+    }
+  }
+
+  @HostListener('document:click', ['$event'])
+  closeOnOutsideClick(event: MouseEvent): void {
+    if (!this.authorMenuOpen()) return;
+    const target = event.target;
+    const filter = this.host.nativeElement.querySelector('.filter-wrap');
+    if (target instanceof Node && filter && !filter.contains(target)) {
+      this.restoreAuthorFocus = false;
+      this.authorSelect?.hide();
+    }
+  }
+
   private setAppliedAuthors(authors: readonly CatalogTerm[]): void {
-    this.selectedAuthors.set(authors);
+    this.selectedAuthors.set([...authors]);
     const { authorIds: _previousAuthorIds, ...otherCriteria } = this.criteria;
-    this.criteria = authors.length
-      ? { ...otherCriteria, authorIds: authors.map(({ id }) => id) }
-      : otherCriteria;
-    this.bookSearches.next(this.criteria);
+    this.criteria = authors.length ? { ...otherCriteria, authorIds: authors.map(({ id }) => id) } : otherCriteria;
+    this.searches.next(this.criteria);
+  }
+
+  searchByTitle(title: string): void {
+    this.titleQuery.set(title);
+    const { title: _previousTitle, ...otherCriteria } = this.criteria;
+    this.criteria = title.trim() ? { ...otherCriteria, title } : otherCriteria;
+    this.searches.next(this.criteria);
   }
 
   load(): void {
     this.status.set('loading');
-    this.bookSearches.next(this.criteria);
+    this.searches.next(this.criteria);
   }
 }
