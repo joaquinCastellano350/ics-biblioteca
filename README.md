@@ -24,7 +24,7 @@ Cada aplicación mantiene sus dependencias en su propio `package.json`. La insta
 
 ## Preparación
 
-Usar Node.js 24.15 o superior dentro de la rama 24 y npm 11 o superior. Angular 22 requiere esa versión mínima de Node. El archivo `.nvmrc` indica la rama de Node para quienes usen un gestor compatible.
+La release se verifica con Node.js 24.20.0 y npm 12.0.2, fijados en `.nvmrc` y `packageManager`. Los mínimos compatibles siguen siendo Node.js 24.15 dentro de la rama 24 y npm 11.
 
 Desde la raíz del repositorio:
 
@@ -101,6 +101,7 @@ correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
 
 ## Documentación
 
+- [Preparación y controles de la primera release](docs/release-sprint-1.md).
 - [Vocabulario del dominio](CONTEXT.md).
 - [Landing e integración de navegación](docs/landing-integracion.md).
 - [Modelo de datos compartido en Confluence](https://joaquincastellano350.atlassian.net/wiki/spaces/SCRUM/pages/6389762) y [copia local sincronizada](docs/modelo-de-datos.md).

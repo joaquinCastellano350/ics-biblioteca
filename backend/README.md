@@ -47,7 +47,7 @@ Object Storage usa el SDK S3 con direccionamiento por ruta, requerido por Neon. 
 
 ## Modelo de datos
 
-El [contrato de autenticación y sesión](../docs/contrato-autenticacion.md) define la integración compartida por SCRUM-7 a SCRUM-11. Registro y login exponen `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/session` y `GET /api/universities`. Logout sigue pendiente. Con `NODE_ENV=production`, Express sirve el build de Angular después de las rutas `/api`, según ADR-0002. Compilar ambos workspaces con `npm run build` desde la raíz antes de arrancar.
+El [contrato de autenticación y sesión](../docs/contrato-autenticacion.md) define la integración compartida por SCRUM-7 a SCRUM-11. Las rutas implementadas son `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/session` y `GET /api/universities`. El cierre revoca únicamente la sesión actual; SCRUM-11 comprueba el vencimiento absoluto y expone el middleware para futuras rutas personales. Con `NODE_ENV=production`, Express sirve el build de Angular después de las rutas `/api`, según ADR-0002. Compilar ambos workspaces con `npm run build` desde la raíz antes de arrancar.
 
 El esquema Prisma integra los modelos de universidades, usuarios y sesiones del
 equipo con las cinco tablas del catálogo: libros, autores, materias y sus dos

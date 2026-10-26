@@ -1,11 +1,11 @@
 # Integración de registro y login
 
-Actualizado el 23 de octubre de 2026. Registro (SCRUM-7 / HU-02) y login (SCRUM-8 / HU-03) están integrados en la rama de login a partir de `origin/develop` en `988f913`. Esta corrección se prepara sin commit; no aplica migraciones ni realiza escrituras en Neon. El documento anterior describía la preparación histórica de la rama de registro y queda conservado en Git.
+Actualizado el 26 de octubre de 2026 para la primera release. Registro (SCRUM-7 / HU-02), login (SCRUM-8 / HU-03), logout e integración de la landing están incorporados en `develop`. La preparación de release no aplica migraciones ni realiza escrituras en Neon. El documento anterior describía la preparación histórica de la rama de registro y queda conservado en Git.
 
 ## Recorrido del backend
 
 1. `src/server.ts` conecta registro, login y catálogo al mismo cliente Prisma. `src/app.ts` monta una sola vez el controlador de cuentas y mantiene las rutas API antes del fallback de Angular.
-2. `src/accounts/accounts.controller.ts` reúne `/api/auth/register`, `/api/auth/login`, `/api/auth/session` y `/api/universities`. Cookie, `Cache-Control: no-store`, marcador `X-Biblioteca-Request: 1`, parser JSON y traducción de errores son comunes. No existe otra implementación productiva en `src/modules/accounts/`.
+2. `src/accounts/accounts.controller.ts` reúne `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/session` y `/api/universities`. Cookie, `Cache-Control: no-store`, marcador `X-Biblioteca-Request: 1`, parser JSON y traducción de errores son comunes. No existe otra implementación productiva en `src/modules/accounts/`.
 3. `registration.service.ts` valida el alta y calcula el hash; `accounts.service.ts` verifica las credenciales. `credentials.ts` comparte normalización de correo, validación y Argon2id; `sessions.ts` comparte token opaco, hash SHA-256 y duración absoluta de seis horas. La contraseña se conserva exactamente, con límite de 1024 bytes UTF-8. Los correos con espacios internos se rechazan antes de llegar al CHECK de la base.
 4. `registration.repository.ts` crea usuario y sesión en una transacción. `prisma-accounts.repository.ts` abre la transacción del login. Ambos llaman a `prisma-session.ts` dentro de esa transacción para obtener la hora de PostgreSQL, revocar la cookie previa reconocida y crear la nueva sesión. Un fallo revierte también la revocación y, en registro, el usuario. Las sesiones de otros dispositivos se conservan.
 5. `auth.response.ts` proyecta explícitamente el mismo DTO público para los dos éxitos y la consulta de sesión. No incluye contraseñas, hashes ni tokens. `account-error.ts` define códigos y mensajes públicos; errores de conectividad se distinguen de fallos internos.
@@ -18,7 +18,7 @@ Actualizado el 23 de octubre de 2026. Registro (SCRUM-7 / HU-02) y login (SCRUM-
 2. `auth/auth.validation.ts` usa la misma biblioteca y regla de correo que el backend. Registro y login conservan dominios internacionales; `inputmode="email"` mantiene el teclado apropiado sin transformar el correo. La normalización se aplica antes del POST, nunca a la contraseña.
 3. `auth/auth.service.ts` envía ambas escrituras y acepta el DTO antes de notificar el éxito a la pantalla. El servicio de transporte independiente de registro se eliminó. El token queda exclusivamente en la cookie HttpOnly.
 4. El bloqueo `authenticating` impide login y registro simultáneos en la misma aplicación y suspende la revalidación por foco. La generación de autenticación descarta GET antiguos, incluidos un 401 o la identidad anterior. El vencimiento de la sesión anterior no descarta el éxito de una autenticación pendiente. Cancelar o fallar libera el bloqueo; el fallo inicial permite reintentar la sesión.
-5. `features/auth/register/register-page.ts` llama a ese servicio y navega al terminar. `App` mantiene un único diálogo de login y la restauración de sesión; la conexión de esos accesos y la identidad con la cabecera de SCRUM-6 queda para una PR de seguimiento. El servicio de login conserva la ruta y el catálogo abierto. Tras integrar SCRUM-6, la raíz muestra la landing; el registro exitoso vuelve a esa página.
+5. `features/auth/register/register-page.ts` llama a ese servicio y navega al terminar. `App` mantiene un único diálogo de login y la restauración de sesión. La integración con SCRUM-6 conecta los accesos de cuenta de cabecera y hero y presenta la identidad de la sesión. El login conserva la ruta y el catálogo abierto; el registro exitoso vuelve a la landing. Ver [landing e integración](landing-integracion.md).
 
 ## Verificación local
 
@@ -30,7 +30,7 @@ npm run build
 npm run test:e2e --workspace frontend
 ```
 
-Resultado de esta corrección: 100 pruebas de backend y 95 de Angular aprobadas; 12 pruebas de Playwright aprobadas en los tres tamaños; build de ambos workspaces correcto. El índice del merge queda sin conflictos y HEAD no cambia: no se creó ningún commit.
+Resultado histórico de la corrección del 23 de octubre: 100 pruebas de backend y 95 de Angular aprobadas; 12 pruebas de Playwright aprobadas en los tres tamaños; build de ambos workspaces correcto. Los resultados de esa fecha no acreditan la release actual: consultar [su registro de controles](release-sprint-1.md).
 
 La suite habitual del backend ejecuta `accounts-flow.test.ts` con PostgreSQL embebido PGlite, Prisma y el adaptador `pg`. Comparte los doce escenarios de `accounts-scenarios.ts` con la integración PostgreSQL externa: alta → consulta de sesión → login, DTO/cookies, reemplazo de sesión, otros dispositivos, errores, duplicados concurrentes, facultad inexistente, rollback provocado, vencimiento/revocación, correo internacional, contraseña exacta y protección HTTP común. Las pruebas unitarias restantes cubren validación, persistencia y transporte.
 
@@ -54,4 +54,4 @@ Después de ejecutarla, descartar esa base de prueba antes de repetir: la fixtur
 
 ## Límites
 
-Logout y protección de futuras operaciones personales permanecen en sus historias. La landing y la navegación compartida se incorporan en SCRUM-6; sus accesos de cuenta, la identidad y el acceso a préstamos quedan para otra PR. El bloqueo del cliente coordina una sola instancia de Angular; varias pestañas comparten cookie y se actualizan al revalidar, sin promesa de sincronización instantánea. El build conserva un aviso por exceder el presupuesto inicial de 500 kB; la compilación termina correctamente. No se publicaron comentarios ni cambios en GitHub.
+Logout y vencimiento están implementados. El middleware de sesión está disponible para futuras operaciones personales. La integración con la landing conecta los accesos de cuenta y la identidad; `/prestamos` incorpora el acceso y la pantalla condicionada a la sesión. El listado y las operaciones de préstamos, incluida su autorización en la API, siguen pendientes. El bloqueo del cliente coordina una sola instancia de Angular; varias pestañas comparten cookie y se actualizan al revalidar, sin promesa de sincronización instantánea. Los avisos de tamaño y resultados actuales se registran en [los controles de release](release-sprint-1.md).
