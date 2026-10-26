@@ -28,10 +28,17 @@ export class BookRepository implements BookRepositoryInterface {
         `
       : undefined;
     if (matchingIds?.length === 0) return [];
+
     const authorIds = [...new Set(criteria.authorIds ?? [])];
+    const subjectIds = [...new Set(criteria.subjectIds ?? [])];
     const where: Prisma.BookWhereInput = {
       ...(matchingIds ? { id: { in: matchingIds.map(({ id }) => id) } } : {}),
-      ...(authorIds.length ? { authors: { some: { authorId: { in: authorIds } } } } : {}),
+      ...(authorIds.length
+        ? { authors: { some: { authorId: { in: authorIds } } } }
+        : {}),
+      ...(subjectIds.length
+        ? { subjects: { some: { subjectId: { in: subjectIds } } } }
+        : {}),
     };
     const rows = await this.database.book.findMany({
       ...(Object.keys(where).length ? { where } : {}),

@@ -52,6 +52,7 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
     http.expectOne('/api/auth/session').flush(session);
     await router.navigateByUrl('/catalogo?q=algebra#resultados');
     http.expectOne('/api/books').flush({ books: [] });
+    http.expectOne('/api/subjects').flush({ subjects: [] });
     await fixture.whenStable();
     root.querySelector<HTMLElement>('.p-select-label')!.click();
     fixture.detectChanges();
@@ -67,6 +68,7 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
     expect(filtered.request.params.getAll('authorIds')).toEqual(['autora']);
     filtered.flush({ books: [{ id: 'algebra', title: 'Álgebra', authors: [], subjects: [] }] });
     await fixture.whenStable();
+    await vi.waitFor(() => expect(document.activeElement).toBe(root.querySelector('.p-select-label')));
   });
   afterEach(() => {
     http.verify();

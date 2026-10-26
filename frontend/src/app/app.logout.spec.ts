@@ -54,6 +54,7 @@ describe('App: cierre de sesión sin API real', () => {
       expect(request.request.method).toBe('GET');
       request.flush({ books });
     }
+    for (const request of http.match('/api/subjects')) request.flush({ subjects: [] });
     await fixture.whenStable();
     fixture.detectChanges();
   }
@@ -145,6 +146,7 @@ describe('App: cierre de sesión sin API real', () => {
     await navigate('/');
     await router.navigateByUrl('/catalogo');
     fixture.detectChanges();
+    http.expectOne('/api/subjects').flush({ subjects: [] });
     const request = http.expectOne('/api/books');
     expect(request.request.method).toBe('GET');
     expect(request.request.headers.has('Authorization')).toBe(false);

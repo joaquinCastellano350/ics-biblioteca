@@ -30,9 +30,7 @@ export class CatalogService {
     if (criteria.title?.trim()) params['title'] = criteria.title.trim();
     if (criteria.authorIds?.length) params['authorIds'] = criteria.authorIds;
     if (criteria.subjectIds?.length) params['subjectIds'] = criteria.subjectIds;
-    return this.http.get<CatalogResponse>(this.url, {
-      params,
-    });
+    return this.http.get<CatalogResponse>(this.url, { params });
   }
 
   searchAuthors(query: string) {

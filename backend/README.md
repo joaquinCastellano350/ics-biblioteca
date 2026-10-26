@@ -82,9 +82,12 @@ Administrar nuevas dependencias desde la raíz siguiendo el [README del reposito
 `src/book/book.ts` define la entidad completa y su proyección pública;
 `book-repository-interface.ts` define el contrato; `book-repository.ts` usa el
 cliente Prisma compartido; `book-controller.ts` prepara la respuesta pública y
-`book-routes.ts` expone `GET /api/books`. Esta lectura no recibe escrituras ni
-criterios de búsqueda que validar. Los requisitos de carga y circulación se
-implementarán en sus operaciones correspondientes.
+`book-routes.ts` expone `GET /api/books` con criterios de título, autores y
+materias. Los IDs repetidos de una misma categoría usan coincidencia OR; las
+categorías activas se combinan con AND.
+`subject/` expone `GET /api/subjects`, una lista independiente ordenada para
+alimentar el filtro. Estas lecturas no reciben escrituras. Los requisitos de
+carga y circulación se implementarán en sus operaciones correspondientes.
 
 Las pruebas conservan las comprobaciones de readiness del scaffolding y agregan
 el endpoint y el recorrido Prisma/adaptador pg/PostgreSQL embebido. Las tablas y

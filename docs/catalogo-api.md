@@ -1,11 +1,20 @@
-﻿# Catálogo público — SCRUM-13
+# Catálogo público — SCRUM-13
 
-`GET /api/books` es público y devuelve el catálogo sin exigir sesión. Acepta el
-parámetro opcional `title`, que busca coincidencias parciales sin distinguir
-mayúsculas ni tildes. PostgreSQL compara el título directamente; la consulta no
-depende de `title_search`, ya que hoy no existe un flujo de escritura de libros
-que garantice su normalización. Un parámetro vacío equivale a no aplicar el
-filtro. El contrato de respuesta no cambia.
+`GET /api/books` es público y devuelve los libros sin exigir sesión. Acepta
+`title` para coincidencia parcial sin distinguir mayúsculas ni tildes, y uno o
+varios parámetros `subjectIds`. Si se reciben varias materias, alcanza con que
+el libro tenga una de ellas (OR); cuando también hay un título, ambos criterios
+se combinan (AND). Sin `subjectIds`, las materias no restringen el catálogo.
+No implementa disponibilidad ni acciones de circulación.
+
+También acepta uno o varios `authorIds`: con varios, basta con que el libro
+tenga cualquiera de esos autores (OR). Los criterios de título, autor y materia
+activos se combinan entre sí (AND). Sin IDs de autor o materia, esos criterios
+no restringen el catálogo.
+
+`GET /api/subjects` es público e independiente de los resultados de libros.
+Devuelve todas las materias de `subjects`, incluidas las que todavía no tienen
+libros, ordenadas por nombre e ID. No pagina ni limita esa lista.
 
 ```json
 {
@@ -18,6 +27,10 @@ filtro. El contrato de respuesta no cambia.
 }
 ```
 
+La respuesta de materias es `{"subjects":[{"id":"UUID","name":"Materia"}]}`.
+Una consulta combinada usa
+`/api/books?title=redes&authorIds=UUIDA&subjectIds=UUID1&subjectIds=UUID2`.
+
 Un catálogo vacío devuelve `{"books":[]}`. No se limita ni pagina la colección.
 Cada libro aparece una vez; conserva todos los autores y materias con sus IDs,
 incluidos autores homónimos. Libros, autores y materias se ordenan por título o
@@ -29,16 +42,16 @@ desbordarse, pero conservan los metadatos completos recibidos. No abren detalle.
 | Archivo en `backend/src/book/` | Responsabilidad |
 | --- | --- |
 | `book.ts` | Entidad `Book` con campos persistidos y proyección pública `CatalogBook`. |
-| `book-repository-interface.ts` | Criterios opcionales extensibles, independientes del ORM. |
-| `book-repository.ts` | Filtro de título en PostgreSQL y consulta Prisma de relaciones ordenadas. |
+| `book-repository-interface.ts` | Contrato de lectura independiente del ORM. |
+| `book-repository.ts` | Consulta Prisma, selección de campos y relaciones ordenadas. |
 | `book-controller.ts` | Preparación y lista explícita de campos de la respuesta pública. |
 | `book-routes.ts` | Adaptación HTTP y error recuperable sin detalles de proveedores. |
 
-El repositorio recibe el PrismaClient compartido de `database.ts`; no abre un
-pool adicional. La búsqueda selecciona IDs mediante SQL parametrizado para
-normalizar y comparar títulos, luego usa Prisma para cargar la misma proyección
-pública y sus relaciones. Los criterios se representan como objeto para permitir
-combinar filtros futuros.
+`backend/src/subject/` contiene la lectura independiente de materias para el
+desplegable. Una falla devuelve 503 con `SUBJECTS_UNAVAILABLE` y no expone
+errores internos.
+
+El repositorio recibe el PrismaClient compartido de database.ts; no abre pool adicional. La búsqueda de títulos usa SQL parametrizado para normalizar y comparar el título sin depender de title_search; Prisma carga después la proyección pública y sus relaciones. La proyección excluye los campos internos.
 
 Una falla devuelve `503` con `error.code = CATALOG_UNAVAILABLE`; el frontend
 ofrece reintentar. No sustituye un fallo por una colección vacía o datos de

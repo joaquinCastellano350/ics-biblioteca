@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/session', route => route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED' } } }));
+  // El endpoint independiente de materias forma parte de la carga del catálogo.
+  await page.route('**/api/subjects', route => route.fulfill({ json: { subjects: [] } }));
 });
 
 export const books = [
@@ -35,9 +37,12 @@ test('catálogo público sin desbordamientos ni enlaces a fichas', async ({ page
 test('distingue catálogo vacío de error y permite reintentar', async ({ page }) => {
   await page.route('**/api/books', (route) => route.fulfill({ status: 503, json: { error: 'CATALOG_UNAVAILABLE' } }));
   await page.goto('/catalogo');
-  await expect(page.getByRole('alert')).toContainText('No pudimos cargar el catálogo');
+  const catalogAlert = page.locator('.state-panel[role="alert"]');
+  await expect(catalogAlert).toContainText('No pudimos cargar el catálogo');
+  await expect(page.locator('.subject-error[role="alert"]')).toHaveCount(0);
   await page.route('**/api/books', (route) => route.fulfill({ json: { books: [] } }));
   await page.getByRole('button', { name: 'Volver a intentar' }).click();
   await expect(page.getByRole('heading', { name: 'La biblioteca está preparando sus estantes' })).toBeVisible();
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(catalogAlert).toHaveCount(0);
+  await expect(page.locator('.subject-error[role="alert"]')).toHaveCount(0);
 });

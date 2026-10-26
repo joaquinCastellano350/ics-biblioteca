@@ -18,8 +18,8 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
     assert.deepEqual(await repository.findAll(), []);
     const book = await database.client.book.create({
       data: {
-        title: 'Redes',
-        titleSearch: 'redes',
+        title: 'Introducción a Redes',
+        titleSearch: 'introduccion a redes',
         pdfObjectKey: 'private/redes.pdf',
         totalCopies: 2,
         authors: {
@@ -33,6 +33,7 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
           create: [
             { subject: { create: { name: 'Sistemas' } } },
             { subject: { create: { name: 'Redes' } } },
+            { subject: { create: { name: 'Zoología avanzada' } } },
           ],
         },
       },
@@ -54,24 +55,59 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
     assert.deepEqual(await repository.findAuthors('no existe'), []);
     const zoe = authors.find(({ name }) => name === 'Zoe')!;
     const otherAuthor = authors.find(({ name }) => name === 'Otra autora')!;
-    assert.deepEqual(
-      (await repository.findAll({ authorIds: [zoe.id, otherAuthor.id] })).map(({ title }) => title),
-      ['Algoritmos', 'Redes'],
-    );
-    assert.deepEqual((await repository.findAll({ authorIds: [zoe.id] })).map(({ title }) => title), ['Redes']);
+    const booksByAnySelectedAuthor = await repository.findAll({ authorIds: [zoe.id, otherAuthor.id] });
+    assert.deepEqual(booksByAnySelectedAuthor.map(({ title }) => title), ['Algoritmos', 'Introducción a Redes']);
+    assert.deepEqual((await repository.findAll({ authorIds: [zoe.id] })).map(({ title }) => title), ['Introducción a Redes']);
     assert.deepEqual(await repository.findAll({ authorIds: [authorWithoutBooks.id] }), []);
     await database.client.book.create({
-      data: { title: 'Introducci\u00f3n a la Ciencia', titleSearch: 'INCONSISTENTE', pdfObjectKey: 'test.pdf', totalCopies: 1 },
+      data: { title: 'Introducción a la Ciencia', titleSearch: 'INCONSISTENTE', pdfObjectKey: 'test.pdf', totalCopies: 1 },
     });
     await database.client.book.create({
       data: {
-        title: `Ping\u00fcino del a\u00f1o`,
+        title: 'Pingüino del año',
         titleSearch: 'intencionalmente-incorrecto',
         pdfObjectKey: 'test-pinguino.pdf',
         totalCopies: 1,
       },
     });
     const books = await repository.findAll();
+    const networkSubject = await database.client.subject.findFirstOrThrow({ where: { name: 'Redes' } });
+    const algorithmSubject = await database.client.subject.findFirstOrThrow({ where: { name: 'Algoritmos' } });
+    assert.deepEqual(
+      (await repository.findAll({
+        title: 'introduccion',
+        authorIds: [zoe.id],
+        subjectIds: [networkSubject.id],
+      })).map(({ title }) => title),
+      ['Introducción a Redes'],
+    );
+    assert.deepEqual(
+      await repository.findAll({
+        title: 'introduccion',
+        authorIds: [zoe.id],
+        subjectIds: [algorithmSubject.id],
+      }),
+      [],
+    );
+    const matchingEitherSubject = await repository.findAll({
+      subjectIds: [networkSubject.id, algorithmSubject.id],
+    });
+    assert.deepEqual(matchingEitherSubject.map(({ title }) => title), ['Algoritmos', 'Introducción a Redes']);
+    assert.deepEqual(
+      (await repository.findAll({ title: 'INTRODUCCION', subjectIds: [networkSubject.id] })).map(({ title }) => title),
+      ['Introducción a Redes'],
+    );
+    assert.deepEqual(
+      await repository.findAll({ title: 'INTRODUCCION', subjectIds: [algorithmSubject.id] }),
+      [],
+    );
+    const subjectBeyondShortCard = await database.client.subject.findFirstOrThrow({
+      where: { name: 'Zoología avanzada' },
+    });
+    const matchByLessVisibleSubject = await repository.findAll({ subjectIds: [subjectBeyondShortCard.id] });
+    assert.deepEqual(matchByLessVisibleSubject.map(({ title }) => title), ['Introducción a Redes']);
+    assert.ok(matchByLessVisibleSubject[0]?.subjects.some(({ id }) => id === subjectBeyondShortCard.id));
+    assert.deepEqual((await repository.findAll({ subjectIds: [] })).length, 4);
     assert.equal(books.length, 4);
     assert.equal(books[0]?.title, 'Algoritmos');
     const networks = books.find((entry) => entry.id === book.id)!;
@@ -82,12 +118,12 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
     assert.equal(new Set(networks.authors.map((author) => author.id)).size, 3);
     assert.deepEqual(
       networks.subjects.map((subject) => subject.name),
-      ['Redes', 'Sistemas'],
+      ['Redes', 'Sistemas', 'Zoología avanzada'],
     );
     assert.ok(!JSON.stringify(books).includes('private/'));
     assert.deepEqual((await repository.findAll({ title: 'INTRODUCCION A LA cien' })).map(({ title }) => title), ['Introducci\u00f3n a la Ciencia']);
     assert.deepEqual((await repository.findAll({ title: 'introducci\u00f3n a la cien' })).map(({ title }) => title), ['Introducci\u00f3n a la Ciencia']);
-    assert.deepEqual((await repository.findAll({ title: 'red' })).map(({ title }) => title), ['Redes']);
+    assert.deepEqual((await repository.findAll({ title: 'red' })).map(({ title }) => title), ['Introducción a Redes']);
     assert.deepEqual((await repository.findAll({ title: 'PINGUINO DEL ANO' })).map(({ title }) => title), [`Ping\u00fcino del a\u00f1o`]);
     assert.deepEqual((await repository.findAll({ title: 'ping\u00fcino del a\u00f1o' })).map(({ title }) => title), [`Ping\u00fcino del a\u00f1o`]);
     assert.deepEqual((await repository.findAll({ title: 'ingui' })).map(({ title }) => title), [`Ping\u00fcino del a\u00f1o`]);
@@ -95,7 +131,7 @@ test('Prisma lee las relaciones del catálogo sin duplicar libros ni autores hom
     assert.equal((await repository.findAll({ title: '   ' })).length, 4);
     assert.deepEqual(
       (await repository.findAll({ title: 'red', authorIds: [zoe.id] })).map(({ title }) => title),
-      ['Redes'],
+      ['Introducción a Redes'],
     );
     assert.deepEqual(await repository.findAll({ title: 'algo', authorIds: [zoe.id] }), []);
     await assert.rejects(
