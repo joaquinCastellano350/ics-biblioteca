@@ -66,7 +66,7 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
     root.querySelector<HTMLButtonElement>('.filter-done')!.click();
     const filtered = http.expectOne(request => request.url === '/api/books');
     expect(filtered.request.params.getAll('authorIds')).toEqual(['autora']);
-    filtered.flush({ books: [{ id: 'algebra', title: 'Álgebra', authors: [], subjects: [] }] });
+    filtered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'algebra', title: 'Álgebra', authors: [], subjects: [] }] });
     await fixture.whenStable();
     await vi.waitFor(() => expect(document.activeElement).toBe(root.querySelector('.p-select-label')));
   });

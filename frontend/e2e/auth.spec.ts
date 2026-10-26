@@ -68,7 +68,7 @@ test('login informa el error y luego autentica sin cambiar la página ni su cont
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/auth/session') return route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED' } } });
-    if (path === '/api/books') return route.fulfill({ json: { books: [{ id: 'libro', title: 'Álgebra', authors: [], subjects: [] }] } });
+    if (path === '/api/books') return route.fulfill({ json: { books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'libro', title: 'Álgebra', authors: [], subjects: [] }] } });
     if (path === '/api/subjects') return route.fulfill({ json: { subjects: [] } });
     if (path === '/api/auth/login') {
       logins++;

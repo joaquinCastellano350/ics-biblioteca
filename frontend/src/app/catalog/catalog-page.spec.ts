@@ -158,8 +158,8 @@ describe('Public catalog author filtering', () => {
   it('combines title and author criteria and keeps authors when the title is cleared', async () => {
     const { fixture, http } = createCatalogFixture();
     expectBooks(http).flush({ books: [
-      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
-      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
     ] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
@@ -171,8 +171,8 @@ describe('Public catalog author filtering', () => {
     const byAuthor = expectBooks(http);
     expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
     byAuthor.flush({ books: [
-      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
-      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
     ] });
     await fixture.whenStable();
 
@@ -182,7 +182,7 @@ describe('Public catalog author filtering', () => {
     const combined = expectBooks(http);
     expect(combined.request.params.get('title')).toBe('red');
     expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
-    combined.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    combined.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
     await fixture.whenStable();
 
     title.value = '';
@@ -191,8 +191,8 @@ describe('Public catalog author filtering', () => {
     expect(titleCleared.request.params.has('title')).toBe(false);
     expect(titleCleared.request.params.getAll('authorIds')).toEqual(['author-1']);
     titleCleared.flush({ books: [
-      { id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
-      { id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
     ] });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -291,7 +291,7 @@ describe('Public catalog author filtering', () => {
 
     const byAuthor = expectBooks(http);
     expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
-    byAuthor.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    byAuthor.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
     await fixture.whenStable();
 
     const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
@@ -300,14 +300,14 @@ describe('Public catalog author filtering', () => {
     const combined = expectBooks(http);
     expect(combined.request.params.get('title')).toBe('red');
     expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
-    combined.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    combined.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
     await fixture.whenStable();
 
     buttonByText(fixture, 'Quitar filtro de autor Ana').click();
     const titleOnly = expectBooks(http);
     expect(titleOnly.request.params.get('title')).toBe('red');
     expect(titleOnly.request.params.has('authorIds')).toBe(false);
-    titleOnly.flush({ books: [{ id: 'b2', title: 'Redes avanzadas', authors: [], subjects: [] }] });
+    titleOnly.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Redes avanzadas', authors: [], subjects: [] }] });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -393,7 +393,7 @@ describe('Public catalog author filtering', () => {
 
     const filtered = expectBooks(http);
     expect(filtered.request.params.getAll('authorIds')).toEqual(['author-1', 'author-2']);
-    filtered.flush({ books: [{ id: 'b1', title: 'Redes', authors: [{ id: 'author-3', name: 'Autora visible' }], subjects: [] }] });
+    filtered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-3', name: 'Autora visible' }], subjects: [] }] });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Redes');
@@ -484,11 +484,11 @@ describe('Public catalog author filtering', () => {
   it('clears the Select placeholder and restores all books when the last author chip is removed', async () => {
     const { fixture, http } = createCatalogFixture();
     expectBooks(http).flush({ books: [
-      { id: 'b1', title: 'Libro uno', authors: [], subjects: [] },
-      { id: 'b2', title: 'Libro dos', authors: [], subjects: [] },
-      { id: 'b3', title: 'Libro tres', authors: [], subjects: [] },
-      { id: 'b4', title: 'Libro cuatro', authors: [], subjects: [] },
-      { id: 'b5', title: 'Libro cinco', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Libro uno', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Libro dos', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b3', title: 'Libro tres', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b4', title: 'Libro cuatro', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b5', title: 'Libro cinco', authors: [], subjects: [] },
     ] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
@@ -503,7 +503,7 @@ describe('Public catalog author filtering', () => {
 
     const filtered = expectBooks(http);
     expect(filtered.request.params.getAll('authorIds')).toEqual(['author-1']);
-    filtered.flush({ books: [{ id: 'b1', title: 'Libro uno', authors: [{ id: 'author-1', name: 'William Stallings' }], subjects: [] }] });
+    filtered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Libro uno', authors: [{ id: 'author-1', name: 'William Stallings' }], subjects: [] }] });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(selectedAuthorLabel(fixture)).toBe('Autores (1)');
@@ -513,11 +513,11 @@ describe('Public catalog author filtering', () => {
     const unfiltered = expectBooks(http);
     expect(unfiltered.request.params.has('authorIds')).toBe(false);
     unfiltered.flush({ books: [
-      { id: 'b1', title: 'Libro uno', authors: [], subjects: [] },
-      { id: 'b2', title: 'Libro dos', authors: [], subjects: [] },
-      { id: 'b3', title: 'Libro tres', authors: [], subjects: [] },
-      { id: 'b4', title: 'Libro cuatro', authors: [], subjects: [] },
-      { id: 'b5', title: 'Libro cinco', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Libro uno', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Libro dos', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b3', title: 'Libro tres', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b4', title: 'Libro cuatro', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b5', title: 'Libro cinco', authors: [], subjects: [] },
     ] });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -557,8 +557,8 @@ describe('Public catalog author filtering', () => {
     expect(request.request.headers.has('Authorization')).toBe(false);
     expect(request.request.withCredentials).toBe(false);
     request.flush({ books: [
-      { id: 'book-1', title: 'Redes', authors: [{ id: 'a1', name: 'Ana' }, { id: 'a2', name: 'Beatriz' }], subjects: [{ id: 's1', name: 'Redes' }, { id: 's2', name: 'Sistemas' }] },
-      { id: 'book-2', title: 'Algoritmos', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Redes', authors: [{ id: 'a1', name: 'Ana' }, { id: 'a2', name: 'Beatriz' }], subjects: [{ id: 's1', name: 'Redes' }, { id: 's2', name: 'Sistemas' }] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-2', title: 'Algoritmos', authors: [], subjects: [] },
     ] });
     await fixture.whenStable();
     const cards = fixture.nativeElement.querySelectorAll('article');
@@ -639,7 +639,7 @@ describe('Public catalog author filtering', () => {
     const fixture = TestBed.createComponent(CatalogPage);
     const http = TestBed.inject(HttpTestingController);
     http.expectOne('/api/books').flush({
-      books: [{ id: 'book-1', title: 'Libro visible', authors: [], subjects: [] }],
+      books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Libro visible', authors: [], subjects: [] }],
     });
     http.expectOne('/api/subjects').flush({ subjects });
     await fixture.whenStable();
@@ -849,8 +849,8 @@ describe('Public catalog author filtering', () => {
     expect(unfiltered.request.params.has('authorIds')).toBe(false);
     expect(unfiltered.request.params.has('subjectIds')).toBe(false);
     unfiltered.flush({ books: [
-      { id: 'book-1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [subjects[0]!] },
-      { id: 'book-2', title: 'Algoritmos', authors: [], subjects: [] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [subjects[0]!] },
+      { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-2', title: 'Algoritmos', authors: [], subjects: [] },
     ] });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -891,7 +891,7 @@ describe('Public catalog author filtering', () => {
     expect(unfiltered.request.params.has('authorIds')).toBe(false);
     expect(unfiltered.request.params.has('title')).toBe(false);
     expect(unfiltered.request.params.has('subjectIds')).toBe(false);
-    unfiltered.flush({ books: [{ id: 'book-1', title: 'Redes', authors: [], subjects: [] }] });
+    unfiltered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Redes', authors: [], subjects: [] }] });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -943,6 +943,26 @@ describe('Public catalog author filtering', () => {
     cleared.flush({ books: [] });
     await fixture.whenStable();
   });
+  it('muestra disponibilidad y distingue cero cupos con una sola consulta de libros', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const request = expectBooks(http);
+    request.flush({ books: [
+      { id: 'available', title: 'Redes', authors: [], subjects: [], availability: { availableCopies: 2, totalCopies: 5 } },
+      { id: 'unavailable', title: 'Álgebra', authors: [], subjects: [], availability: { availableCopies: 0, totalCopies: 1 } },
+    ] });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const cards: NodeListOf<HTMLElement> = fixture.nativeElement.querySelectorAll('article.book-card');
+    expect(cards[0]?.textContent).toContain('2/5');
+    expect(cards[0]?.classList.contains('unavailable')).toBe(false);
+    expect(cards[1]?.textContent).toContain('0/1');
+    expect(cards[1]?.textContent).toContain('Sin cupos disponibles');
+    expect(cards[1]?.classList.contains('unavailable')).toBe(true);
+    expect(cards[1]?.hasAttribute('aria-disabled')).toBe(false);
+    http.expectNone('/api/availability');
+    http.expectNone('/api/books');
+  });
+
   it('cancels catalog, subject, and pending author requests when leaving the page', async () => {
     const fixture = TestBed.createComponent(CatalogPage);
     const http = TestBed.inject(HttpTestingController);
