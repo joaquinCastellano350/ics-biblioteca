@@ -24,4 +24,6 @@ _Evitar_: Reserva, para una espera que todavía no tiene cupo asignado.
 
 **Disponibilidad**: Cantidad de cupos que pueden solicitarse inmediatamente, respetando los préstamos, las reservas y la prioridad de la cola.
 
+**Conciliación de un libro**: Puesta al día de sus préstamos y reservas vencidos y de la asignación de cupos a la cola. Su resultado determina qué cupos pueden solicitarse inmediatamente.
+
 **Aviso de turno**: Correo que informa al estudiante de una reserva y del plazo para aceptarla.
