@@ -41,6 +41,8 @@ export class BookRepository implements BookRepositoryInterface {
         : {}),
     };
     const rows = await this.database.book.findMany({
+      // Un viaje a PostgreSQL para libros, autores y materias.
+      relationLoadStrategy: 'join',
       ...(Object.keys(where).length ? { where } : {}),
       orderBy: [{ title: 'asc' }, { id: 'asc' }],
       select: {
