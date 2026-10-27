@@ -9,16 +9,15 @@ export default defineConfig({
   },
   // Branch policy: per-branch tuning
   branch: (branch) => {
-    if (branch.isDefault) {
-      // Default branch: no overrides, uses project defaults
+    if (branch.isDefault || branch.name === "production" || branch.name === "development") {
+      // Permanent environments: do not assign an expiration when creating them.
       return {};
     }
     if (!branch.exists) {
-      // New non-default branches: auto-expire
-      // Run `neon checkout <name>` to create a new branch with these settings
-      return { ttl: "7d" };
+      // New temporary branches: expire after 30 days, the maximum supported TTL.
+      return { ttl: "30d" };
     }
-    // Existing branch: no changes
+    // Existing branch: preserve its settings, including any expiration already set.
     return {};
   },
 });
