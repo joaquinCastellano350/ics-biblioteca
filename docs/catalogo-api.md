@@ -53,6 +53,17 @@ errores internos.
 
 El repositorio recibe el PrismaClient compartido de database.ts; no abre pool adicional. La búsqueda de títulos usa SQL parametrizado para normalizar y comparar el título sin depender de title_search; Prisma carga después la proyección pública y sus relaciones. La proyección excluye los campos internos.
 
+El cliente habilita `relationJoins` (Preview en Prisma 7.10.1) y la consulta de
+libros usa explícitamente `relationLoadStrategy: 'join'`: carga libros, autores
+y materias en una sentencia, en lugar de una por tabla. Cambia la generación
+del cliente, no las tablas; no requiere una migración. La búsqueda por título
+conserva su consulta previa de normalización y por eso hace dos consultas.
+
+El frontend espera 500 ms desde la última edición de título o búsqueda de autores.
+Un nuevo evento cancela el timer y la suscripción HTTP anterior. La entrada
+inicial al catálogo, la limpieza y los filtros confirmados siguen siendo
+inmediatos. Ver [verificación del hotfix](hotfix-catalogo-busquedas.md).
+
 Una falla devuelve `503` con `error.code = CATALOG_UNAVAILABLE`; el frontend
 ofrece reintentar. No sustituye un fallo por una colección vacía o datos de
 demostración. No hay endpoints de escritura ni de detalle en esta historia.

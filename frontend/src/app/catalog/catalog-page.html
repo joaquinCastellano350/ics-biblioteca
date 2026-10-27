@@ -18,7 +18,7 @@
           (input)="searchByTitle($any($event.target).value)" />
         @if (titleQuery()) {
           <p-button class="title-search-clear" icon="pi pi-times" [text]="true" [rounded]="true"
-            ariaLabel="Limpiar búsqueda por título" (onClick)="searchByTitle('')" />
+            ariaLabel="Limpiar búsqueda por título" (onClick)="searchByTitle('', true)" />
         }
       </p-iconfield>
     </section>

@@ -88,11 +88,12 @@ function authorSearchInput(fixture: ReturnType<typeof createCatalogFixture>['fix
   return input;
 }
 
-function typeAuthorSearch(fixture: ReturnType<typeof createCatalogFixture>['fixture'], query: string): void {
+async function typeAuthorSearch(fixture: ReturnType<typeof createCatalogFixture>['fixture'], query: string): Promise<void> {
   const input = authorSearchInput(fixture);
   input.value = query;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   fixture.detectChanges();
+  await new Promise(resolve => setTimeout(resolve, 510));
 }
 
 function chooseAuthor(fixture: ReturnType<typeof createCatalogFixture>['fixture'], name: string): void {
@@ -138,6 +139,7 @@ describe('Public catalog author filtering', () => {
 
     input.value = 'cien';
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     const search = http.expectOne('/api/books?title=cien');
     expect(search.request.params.get('title')).toBe('cien');
     search.flush({ books: [] });
@@ -163,7 +165,7 @@ describe('Public catalog author filtering', () => {
     ] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
     chooseAuthor(fixture, 'Ana');
@@ -179,6 +181,7 @@ describe('Public catalog author filtering', () => {
     const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
     title.value = 'red';
     title.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     const combined = expectBooks(http);
     expect(combined.request.params.get('title')).toBe('red');
     expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
@@ -187,6 +190,7 @@ describe('Public catalog author filtering', () => {
 
     title.value = '';
     title.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     const titleCleared = expectBooks(http);
     expect(titleCleared.request.params.has('title')).toBe(false);
     expect(titleCleared.request.params.getAll('authorIds')).toEqual(['author-1']);
@@ -283,7 +287,7 @@ describe('Public catalog author filtering', () => {
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
     chooseAuthor(fixture, 'Ana');
@@ -297,6 +301,7 @@ describe('Public catalog author filtering', () => {
     const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
     title.value = 'red';
     title.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     const combined = expectBooks(http);
     expect(combined.request.params.get('title')).toBe('red');
     expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
@@ -323,7 +328,7 @@ describe('Public catalog author filtering', () => {
     await openAuthorSelect(fixture);
     http.expectNone('/api/authors');
 
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     const request = http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana');
     expect(request.request.method).toBe('GET');
     request.flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Ana María' }] });
@@ -337,7 +342,7 @@ describe('Public catalog author filtering', () => {
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'a');
+    await typeAuthorSearch(fixture, 'a');
     http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'a')
       .flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
     await fixture.whenStable();
@@ -377,7 +382,7 @@ describe('Public catalog author filtering', () => {
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'a');
+    await typeAuthorSearch(fixture, 'a');
     http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'a')
       .flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
     await fixture.whenStable();
@@ -408,7 +413,7 @@ describe('Public catalog author filtering', () => {
     await fixture.whenStable();
     await openAuthorSelect(fixture);
 
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana')
       .flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
@@ -440,7 +445,7 @@ describe('Public catalog author filtering', () => {
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana')
       .flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Ana María' }] });
     await fixture.whenStable();
@@ -461,7 +466,7 @@ describe('Public catalog author filtering', () => {
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'a');
+    await typeAuthorSearch(fixture, 'a');
     http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'a')
       .flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
     await fixture.whenStable();
@@ -492,7 +497,7 @@ describe('Public catalog author filtering', () => {
     ] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'William Stallings');
+    await typeAuthorSearch(fixture, 'William Stallings');
     http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'William Stallings')
       .flush({ authors: [{ id: 'author-1', name: 'William Stallings' }] });
     await fixture.whenStable();
@@ -533,14 +538,14 @@ describe('Public catalog author filtering', () => {
     await fixture.whenStable();
     await openAuthorSelect(fixture);
 
-    typeAuthorSearch(fixture, 'nobody');
+    await typeAuthorSearch(fixture, 'nobody');
     http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'nobody')
       .flush({ authors: [] });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('No se encontraron autores');
 
-    typeAuthorSearch(fixture, 'failure');
+    await typeAuthorSearch(fixture, 'failure');
     http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'failure')
       .flush({}, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
@@ -587,7 +592,7 @@ describe('Public catalog author filtering', () => {
     expectBooks(http).flush({ books: [] });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     const pendingAuthors = http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === 'ana');
     fixture.destroy();
     expect(pendingAuthors.cancelled).toBe(true);
@@ -687,7 +692,7 @@ describe('Public catalog author filtering', () => {
     expect(subjectSelect?.textContent).toContain('Materias');
     expect(subjectSelect?.textContent).toContain('(2)');
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
     chooseAuthor(fixture, 'Ana');
@@ -703,6 +708,7 @@ describe('Public catalog author filtering', () => {
     const title = root.querySelector('#catalog-title-search') as HTMLInputElement;
     title.value = 'redes';
     title.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     fixture.detectChanges();
     const combined = expectBooks(http);
     expect(combined.request.params.get('title')).toBe('redes');
@@ -731,7 +737,7 @@ describe('Public catalog author filtering', () => {
 
     const root = fixture.nativeElement as HTMLElement;
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
     chooseAuthor(fixture, 'Ana');
@@ -744,6 +750,7 @@ describe('Public catalog author filtering', () => {
     const title = root.querySelector('#catalog-title-search') as HTMLInputElement;
     title.value = 'redes';
     title.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     fixture.detectChanges();
     const withTitle = expectBooks(http);
     expect(withTitle.request.params.get('title')).toBe('redes');
@@ -786,6 +793,7 @@ describe('Public catalog author filtering', () => {
 
     title.value = 'algoritmos';
     title.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     fixture.detectChanges();
     const afterCancel = expectBooks(http);
     expect(afterCancel.request.params.get('title')).toBe('algoritmos');
@@ -805,7 +813,7 @@ describe('Public catalog author filtering', () => {
     fixture.detectChanges();
 
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
     chooseAuthor(fixture, 'Ana');
@@ -832,6 +840,7 @@ describe('Public catalog author filtering', () => {
     const title = root.querySelector('#catalog-title-search') as HTMLInputElement;
     title.value = 'sin coincidencias';
     title.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     const noResults = expectBooks(http);
     expect(noResults.request.params.get('title')).toBe('sin coincidencias');
     expect(noResults.request.params.getAll('authorIds')).toEqual(['author-1']);
@@ -874,7 +883,7 @@ describe('Public catalog author filtering', () => {
     await fixture.whenStable();
 
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     expectAuthorSearch(http, 'ana').flush({ authors: [{ id: 'author-1', name: 'Ana' }] });
     await fixture.whenStable();
     chooseAuthor(fixture, 'Ana');
@@ -927,7 +936,7 @@ describe('Public catalog author filtering', () => {
     await fixture.whenStable();
 
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'a');
+    await typeAuthorSearch(fixture, 'a');
     expectAuthorSearch(http, 'a').flush({ authors: [{ id: 'author-1', name: 'Ana' }, { id: 'author-2', name: 'Beatriz' }] });
     await fixture.whenStable();
     chooseAuthor(fixture, 'Ana');
@@ -950,12 +959,113 @@ describe('Public catalog author filtering', () => {
     const pendingBooks = expectBooks(http);
     const pendingSubjects = http.expectOne('/api/subjects');
     await openAuthorSelect(fixture);
-    typeAuthorSearch(fixture, 'ana');
+    await typeAuthorSearch(fixture, 'ana');
     const pendingAuthors = expectAuthorSearch(http, 'ana');
 
     fixture.destroy();
     expect(pendingBooks.cancelled).toBe(true);
     expect(pendingSubjects.cancelled).toBe(true);
     expect(pendingAuthors.cancelled).toBe(true);
+  });
+});
+
+describe('Catalog search delay', () => {
+  beforeEach(() => {
+    HTMLElement.prototype.scrollIntoView ??= () => {};
+    TestBed.configureTestingModule({ providers: [...appConfig.providers, provideHttpClient(), provideHttpClientTesting()] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    TestBed.inject(HttpTestingController).verify();
+  });
+
+  it('waits 500 ms since the latest title change and cancels old work immediately', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    vi.useFakeTimers();
+    const page = fixture.componentInstance;
+    page.searchByTitle('r');
+    vi.advanceTimersByTime(499);
+    http.expectNone(request => request.url === '/api/books');
+    page.searchByTitle('re');
+    vi.advanceTimersByTime(499);
+    http.expectNone(request => request.url === '/api/books');
+    vi.advanceTimersByTime(1);
+    const old = http.expectOne('/api/books?title=re');
+    page.searchByTitle('red');
+    expect(old.cancelled).toBe(true);
+    vi.advanceTimersByTime(499);
+    http.expectNone(request => request.url === '/api/books');
+    vi.advanceTimersByTime(1);
+    http.expectOne('/api/books?title=red').flush({ books: [] });
+    page.searchByTitle('red ');
+    vi.advanceTimersByTime(500);
+    http.expectNone(request => request.url === '/api/books');
+    page.searchByTitle('');
+    vi.advanceTimersByTime(400);
+    page.searchByTitle('otro');
+    vi.advanceTimersByTime(500);
+    http.expectOne('/api/books?title=otro').flush({ books: [] });
+    page.searchByTitle('', true);
+    http.expectOne('/api/books').flush({ books: [] });
+  });
+
+  it('clear and explicit filter actions replace pending typing without a delayed duplicate', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    vi.useFakeTimers();
+    const page = fixture.componentInstance;
+    page.searchByTitle('red');
+    page.updateDraftSubjects(subjects);
+    page.applySubjectSelection();
+    const immediate = expectBooks(http);
+    expect(immediate.request.params.get('title')).toBe('red');
+    expect(immediate.request.params.getAll('subjectIds')).toEqual(subjects.map(({ id }) => id));
+    immediate.flush({ books: [] });
+    vi.advanceTimersByTime(500);
+    http.expectNone(request => request.url === '/api/books');
+    page.searchByTitle('otro');
+    page.clearFilters();
+    http.expectOne('/api/books').flush({ books: [] });
+    vi.advanceTimersByTime(500);
+    http.expectNone(request => request.url === '/api/books');
+  });
+
+  it('debounces authors and cancels pending or active searches when the menu closes', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    vi.useFakeTimers();
+    const page = fixture.componentInstance;
+    page.searchAuthors('a');
+    vi.advanceTimersByTime(400);
+    page.searchAuthors('an');
+    vi.advanceTimersByTime(499);
+    http.expectNone(request => request.url === '/api/authors');
+    vi.advanceTimersByTime(1);
+    const active = expectAuthorSearch(http, 'an');
+    page.searchAuthors('ana');
+    expect(active.cancelled).toBe(true);
+    page.onAuthorMenuHide();
+    vi.advanceTimersByTime(500);
+    http.expectNone(request => request.url === '/api/authors');
+    page.onAuthorMenuShow();
+    page.searchAuthors('ana');
+    vi.advanceTimersByTime(500);
+    expectAuthorSearch(http, 'ana').flush({ authors: [] });
+  });
+
+  it('does not send pending searches after leaving the catalog', async () => {
+    const { fixture, http } = createCatalogFixture();
+    expectBooks(http).flush({ books: [] });
+    await fixture.whenStable();
+    vi.useFakeTimers();
+    fixture.componentInstance.searchByTitle('pendiente');
+    fixture.componentInstance.searchAuthors('pendiente');
+    fixture.destroy();
+    vi.advanceTimersByTime(500);
+    http.expectNone(request => request.url === '/api/books' || request.url === '/api/authors');
   });
 });
