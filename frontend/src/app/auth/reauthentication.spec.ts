@@ -59,6 +59,7 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
     const authorSearch = root.querySelector<HTMLInputElement>('p-select input[aria-label="Buscar autores"]')!;
     authorSearch.value = 'Autora';
     authorSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 510));
     http.expectOne(request => request.url === '/api/authors' && request.params.get('q') === 'Autora')
       .flush({ authors: [{ id: 'autora', name: 'Autora de prueba' }] });
     await fixture.whenStable();

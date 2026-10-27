@@ -19,7 +19,7 @@ shape:
 ```
 
 The catalog's **Autores** button opens a dropdown menu. Its search field calls
-this endpoint as the visitor types; results come from the authors endpoint and
+this endpoint after 500 ms without further typing; results come from the authors endpoint and
 are independent of the books currently loaded in the catalog. Each result has a
 checkbox, so visitors can select multiple authors.
 
@@ -29,6 +29,11 @@ menu. Closing the menu or pressing Escape cancels provisional changes and
 keeps the previously applied filters. Applied authors appear as removable
 chips below the catalog controls; removing a chip immediately updates the
 catalog results.
+
+A new edit cancels the pending timer and any previous client request immediately.
+Closing the menu or leaving the catalog cancels pending author searches too.
+Cancelling a browser request does not guarantee that a query already received by
+the server stops running; the delay prevents unnecessary requests from starting.
 
 ## Filter books by authors
 

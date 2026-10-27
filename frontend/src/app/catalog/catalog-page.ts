@@ -12,7 +12,7 @@ import { SelectModule, Select } from 'primeng/select';
 import { InputTextModule } from 'primeng/inputtext';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
-import { EMPTY, Subject, catchError, switchMap } from 'rxjs';
+import { EMPTY, Subject, catchError, of, switchMap, timer } from 'rxjs';
 
 @Component({
   selector: 'app-catalog-page',
@@ -54,35 +54,43 @@ export class CatalogPage {
   private applyOnHide = false;
   private restoreAuthorFocus = true;
   private criteria: CatalogSearchCriteria = {};
-  private readonly searches = new Subject<CatalogSearchCriteria>();
-  private readonly authorSearches = new Subject<string>();
+  private readonly searches = new Subject<{ criteria: CatalogSearchCriteria; delayed: boolean }>();
+  private readonly authorSearches = new Subject<string | null>();
 
   constructor() {
     this.searches.pipe(
-      switchMap((criteria) => {
-        this.status.set('loading');
-        return this.catalog.findAll(criteria).pipe(
-          catchError(() => { this.status.set('error'); return EMPTY; }),
-        );
-      }),
+      // El nuevo evento cancela inmediatamente el timer o la consulta anterior.
+      // Solo las pulsaciones esperan; filtros, limpieza y reintento son inmediatos.
+      switchMap(({ criteria, delayed }) => (delayed ? timer(500) : of(0)).pipe(
+        switchMap(() => {
+          this.status.set('loading');
+          return this.catalog.findAll(criteria).pipe(
+            catchError(() => { this.status.set('error'); return EMPTY; }),
+          );
+        }),
+      )),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe(({ books }) => {
       this.books.set(books);
       this.status.set('ready');
     });
-    this.searches.next({});
+    this.searches.next({ criteria: {}, delayed: false });
     this.authorSearches.pipe(
       switchMap((query) => {
-        this.authorSearchLoading.set(true);
+        this.authorSearchLoading.set(false);
         this.authorSearchError.set(false);
-        return this.catalog.searchAuthors(query).pipe(
-          catchError(() => {
-            this.authorSuggestions.set([]);
-            this.authorSearchError.set(true);
-            this.authorSearchLoading.set(false);
-            return EMPTY;
-          }),
-        );
+        if (query === null) return EMPTY;
+        return timer(500).pipe(switchMap(() => {
+          this.authorSearchLoading.set(true);
+          return this.catalog.searchAuthors(query).pipe(
+            catchError(() => {
+              this.authorSuggestions.set([]);
+              this.authorSearchError.set(true);
+              this.authorSearchLoading.set(false);
+              return EMPTY;
+            }),
+          );
+        }));
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe(({ authors }) => {
@@ -94,8 +102,6 @@ export class CatalogPage {
 
   onAuthorMenuShow(): void {
     this.draftAuthors.set([...this.selectedAuthors()]);
-    this.authorQuery.set('');
-    this.authorSuggestions.set([]);
     this.authorSearchLoading.set(false);
     this.authorSearchError.set(false);
     this.authorMenuOpen.set(true);
@@ -109,6 +115,9 @@ export class CatalogPage {
   }
 
   onAuthorMenuHide(): void {
+    this.authorSearches.next(null);
+    this.authorQuery.set('');
+    this.authorSuggestions.set([]);
     this.authorMenuOpen.set(false);
     if (!this.applyOnHide) this.draftAuthors.set([...this.selectedAuthors()]);
     this.applyOnHide = false;
@@ -117,6 +126,10 @@ export class CatalogPage {
   }
 
   searchAuthors(query: string): void {
+    if (query.trim() === this.authorQuery().trim()) {
+      this.authorQuery.set(query);
+      return;
+    }
     this.authorQuery.set(query);
     this.authorSearches.next(query);
   }
@@ -168,14 +181,15 @@ export class CatalogPage {
     this.selectedAuthors.set([...authors]);
     const { authorIds: _previousAuthorIds, ...otherCriteria } = this.criteria;
     this.criteria = authors.length ? { ...otherCriteria, authorIds: authors.map(({ id }) => id) } : otherCriteria;
-    this.searches.next(this.criteria);
+    this.searches.next({ criteria: this.criteria, delayed: false });
   }
 
-  searchByTitle(title: string): void {
+  searchByTitle(title: string, immediate = false): void {
     this.titleQuery.set(title);
+    if (title.trim() === (this.criteria.title ?? '').trim()) return;
     const { title: _previousTitle, ...otherCriteria } = this.criteria;
     this.criteria = title.trim() ? { ...otherCriteria, title } : otherCriteria;
-    this.searches.next(this.criteria);
+    this.searches.next({ criteria: this.criteria, delayed: !immediate });
   }
 
   loadSubjects(): void {
@@ -264,6 +278,6 @@ export class CatalogPage {
   }
   load(): void {
     this.status.set('loading');
-    this.searches.next(this.criteria);
+    this.searches.next({ criteria: this.criteria, delayed: false });
   }
 }
