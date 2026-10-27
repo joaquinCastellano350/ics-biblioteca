@@ -8,6 +8,8 @@ coverage/
 out-tsc/
 backend/src/generated/
 .neon
+/frontend/test-results/
+/frontend/playwright-report/
 .env
 .env.*
 !.env.example

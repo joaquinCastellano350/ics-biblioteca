@@ -2,11 +2,27 @@ import { createApp } from './app.js';
 import { checkDatabase, database } from './database.js';
 import { serverPort } from './env.js';
 import { checkStorage, storage } from './storage.js';
+import { AccountsService } from './accounts/accounts.service.js';
+import { PrismaAccountsRepository } from './accounts/prisma-accounts.repository.js';
+import { RegistrationService } from './accounts/registration.service.js';
+import { PostgresRegistrationRepository } from './accounts/registration.repository.js';
+import { BookRepository } from './book/book-repository.js';
+import { SubjectRepository } from './subject/subject-repository.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const port = serverPort();
-const server = createApp({ checkDatabase, checkStorage }).listen(port, () => {
-  console.log(`API disponible en el puerto ${port}.`);
-});
+const production = process.env['NODE_ENV'] === 'production';
+const frontendDirectory = fileURLToPath(new URL('../../frontend/dist/biblioteca/browser/', import.meta.url));
+const server = createApp({
+  checkDatabase, checkStorage, production,
+  accounts: new AccountsService(new PrismaAccountsRepository(database)),
+  registrationService: new RegistrationService(new PostgresRegistrationRepository(database)),
+  books: new BookRepository(database),
+  subjects: new SubjectRepository(database),
+  ...(production && existsSync(join(frontendDirectory, 'index.html')) ? { frontendDirectory } : {}),
+}).listen(port, () => { console.log(`API disponible en el puerto ${port}.`); });
 
 server.on('error', () => {
   console.error('No se pudo iniciar el servidor HTTP.');
@@ -14,7 +30,6 @@ server.on('error', () => {
   storage.destroy();
   void database.$disconnect();
 });
-
 function shutdown(): void {
   const timeout = setTimeout(() => process.exit(1), 10_000);
   timeout.unref();
@@ -23,6 +38,5 @@ function shutdown(): void {
     void database.$disconnect().finally(() => clearTimeout(timeout));
   });
 }
-
 process.once('SIGINT', shutdown);
 process.once('SIGTERM', shutdown);

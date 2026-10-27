@@ -1,0 +1,40 @@
+<main class="loans-page wrap" id="main-content" tabindex="-1">
+  <header class="page-heading">
+    <p class="eyebrow">Tu espacio de lectura</p>
+    <h1>Mis préstamos</h1>
+    <p class="intro">Tu biblioteca te acompaña, donde estés.</p>
+  </header>
+
+  <section class="private-state" aria-labelledby="loans-state-title"
+    [attr.aria-busy]="auth.status() === 'loading'">
+    @switch (auth.status()) {
+      @case ('loading') {
+        <p-progress-spinner ariaLabel="Comprobando sesión" [style]="{ width: '32px', height: '32px' }" />
+        <h2 id="loans-state-title">Estamos preparando tu espacio</h2>
+        <p role="status">Comprobando tu sesión…</p>
+      }
+      @case ('anonymous') {
+        <span class="state-symbol" aria-hidden="true"><i class="pi pi-lock"></i></span>
+        <h2 id="loans-state-title">Tu biblioteca, en un solo lugar</h2>
+        <p>Ingresá a tu cuenta para acceder a la sección de préstamos.</p>
+        <button pButton type="button" (click)="auth.openLogin()" [disabled]="auth.authenticating()"
+          aria-controls="login-dialog" [attr.aria-expanded]="auth.loginRequested()">
+          Ingresar a mi cuenta <i class="pi pi-arrow-right" aria-hidden="true"></i>
+        </button>
+        <p class="register-invite">¿Todavía no tenés cuenta? <a routerLink="/registro">Registrate</a></p>
+      }
+      @case ('unavailable') {
+        <span class="state-symbol" aria-hidden="true"><i class="pi pi-exclamation-circle"></i></span>
+        <h2 id="loans-state-title">Tu sesión todavía no está confirmada</h2>
+        <p>Reintentá la comprobación de sesión para acceder a este espacio.</p>
+        <a pButton variant="outlined" routerLink="/catalogo">Explorar catálogo</a>
+      }
+      @case ('authenticated') {
+        <span class="state-symbol" aria-hidden="true"><i class="pi pi-book"></i></span>
+        <h2 id="loans-state-title">Tus lecturas, en un solo lugar</h2>
+        <p>Estamos preparando esta sección. Pronto vas a poder consultar tus préstamos activos desde acá.</p>
+        <a pButton routerLink="/catalogo">Explorar catálogo <i class="pi pi-arrow-right" aria-hidden="true"></i></a>
+      }
+    }
+  </section>
+</main>

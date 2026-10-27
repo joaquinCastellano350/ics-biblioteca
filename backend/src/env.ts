@@ -2,7 +2,9 @@ import { config } from 'dotenv';
 import { fileURLToPath } from 'node:url';
 
 config({
-  path: ['../../.env.local', '../../.env', '../.env'].map((path) =>
+  path: [
+    '../../.env.local', '../../.env', '../.env',
+  ].map((path) =>
     fileURLToPath(new URL(path, import.meta.url)),
   ),
   quiet: true,
