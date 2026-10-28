@@ -1,68 +1,40 @@
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import type { BookOccupancy } from './circulation.js';
 import type { CirculationRepositoryInterface } from './circulation-repository-interface.js';
+import { CirculationReconciler } from './circulation-reconciler.js';
+
+function retryable(error: unknown): boolean {
+  const pending: unknown[] = [error];
+  const seen = new Set<object>();
+  while (pending.length) {
+    const value = pending.pop();
+    if (!value || typeof value !== 'object' || seen.has(value)) continue;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if ([record['code'], record['originalCode']].some(code => ['P2034', '40001', '40P01'].includes(String(code)))) return true;
+    pending.push(record['meta'], record['cause'], record['driverAdapterError']);
+  }
+  return false;
+}
 
 export class CirculationRepository implements CirculationRepositoryInterface {
-  constructor(private readonly database: Pick<PrismaClient, '$transaction'>) {}
+  constructor(
+    private readonly database: Pick<PrismaClient, '$transaction'>,
+    private readonly reconciler = new CirculationReconciler(),
+  ) {}
 
   async findOccupancy(bookIds: readonly string[]): Promise<readonly BookOccupancy[]> {
-    const ids = [...new Set(bookIds)];
+    const ids = [...new Set(bookIds)].sort();
     if (ids.length === 0) return [];
 
-    return this.database.$transaction(async (transaction) => {
-      // Único SQL explícito: Prisma no ofrece un método para leer el reloj del
-      // servidor. Las entidades y sus relaciones se consultan mediante el ORM.
-      const [clock] = await transaction.$queryRaw<{ now: Date }[]>`
-        SELECT transaction_timestamp() AS now
-      `;
-      if (!clock) throw new Error('No se pudo obtener la hora de PostgreSQL.');
-      const activeLoan: Prisma.LoanWhereInput = {
-        closedAt: null, startedAt: { lte: clock.now }, dueAt: { gt: clock.now },
-      };
-      const heldReservation: Prisma.ReservationWhereInput = {
-        state: 'HELD', expiresAt: { gt: clock.now },
-      };
-      const books = await transaction.book.findMany({
-        where: { id: { in: ids } },
-        orderBy: { id: 'asc' },
-        select: {
-          id: true,
-          totalCopies: true,
-          _count: {
-            select: {
-              loans: { where: activeLoan },
-              reservations: { where: heldReservation },
-            },
-          },
-          queueEntries: {
-            where: { state: 'WAITING' },
-            select: {
-              user: {
-                select: {
-                  // El límite considera todos los préstamos del estudiante.
-                  _count: { select: { loans: { where: activeLoan } } },
-                  // Para excluir posesión del libro solo hacen falta los IDs
-                  // de los libros de esta consulta, no los metadatos personales.
-                  loans: { where: { ...activeLoan, bookId: { in: ids } }, select: { bookId: true } },
-                  reservations: { where: { ...heldReservation, bookId: { in: ids } }, select: { bookId: true } },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      return books.map((book) => ({
-        bookId: book.id,
-        totalCopies: book.totalCopies,
-        activeLoans: book._count.loans,
-        heldReservations: book._count.reservations,
-        eligibleWaiters: book.queueEntries.filter(({ user }) =>
-          user._count.loans < 5
-          && !user.loans.some(({ bookId }) => bookId === book.id)
-          && !user.reservations.some(({ bookId }) => bookId === book.id),
-        ).length,
-      }));
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.database.$transaction(transaction => this.reconciler.reconcile(transaction, ids), {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000,
+        });
+      } catch (error) {
+        if (attempt >= 2 || !retryable(error)) throw error;
+      }
+    }
   }
 }

@@ -5,7 +5,6 @@ export interface BookOccupancy {
   readonly totalCopies: number;
   readonly activeLoans: number;
   readonly heldReservations: number;
-  readonly eligibleWaiters: number;
 }
 
 export interface BookAvailability {

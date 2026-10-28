@@ -79,7 +79,7 @@ test('login y consulta conservan la respuesta pública y la cookie de seis horas
     checkDatabase: async () => {}, checkStorage: async () => {},
     accounts: new AccountsService(repository), production: true,
     circulation: { findOccupancy: async (ids) => ids.map((bookId) => ({
-      bookId, totalCopies: 1, activeLoans: 0, heldReservations: 0, eligibleWaiters: 0,
+      bookId, totalCopies: 1, activeLoans: 0, heldReservations: 0,
     })) },
     books: {
       findAll: async () => [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }],

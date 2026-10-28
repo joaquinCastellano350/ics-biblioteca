@@ -12,6 +12,7 @@ Las reservas inicialmente vigentes terminan unas veintitrés horas después; los
 de la tabla corresponden al momento de preparación y cambiarán al vencer.
 El préstamo vencido y la reserva vencida se dejaron sin procesar su cierre
 para comprobar que el conteo respeta las fechas sin depender de un proceso periódico.
+Con la corrección de conciliación, consultar el catálogo también procesa sus cierres.
 
 ## Servicios locales
 
@@ -32,7 +33,7 @@ workspaces. No se necesita iniciar sesión para probar disponibilidad.
 | Recarga y cupos agotados | Localizar «Data and Computer Communications». | Estado final `0/2`, grisado, por dos préstamos vigentes. Durante la prueba primero mostraba `1/2` por una reserva; ver los cambios controlados más abajo. |
 | Préstamo más reserva | Localizar «Kanban». | `1/3`: un préstamo vigente y una reserva vigente ocupan dos cupos. |
 | Fechas vencidas | Localizar «Redes de computadoras». | `4/4`: el préstamo vencido sin cerrar y la reserva HELD vencida no descuentan cupos. |
-| Prioridad de espera | Localizar «Software Engineering: A Practitioner's Approach». | `3/5`: un préstamo vigente y un cupo pendiente para una espera WAITING elegible. La lectura no crea la reserva ni cambia la espera. |
+| Prioridad de espera | Localizar «Software Engineering: A Practitioner's Approach». | `3/5` mientras siga vigente su ocupación: un préstamo y una reserva para la primera espera elegible. La conciliación cambia WAITING a OFFERED y registra el aviso en el outbox. |
 | Búsqueda y filtros | Buscar «Kanban»; aplicar un autor y una materia presentes en su tarjeta. | Solo devuelve resultados compatibles; Kanban mantiene `1/3`. Limpiar los filtros restaura los cinco libros y sus conteos. |
 | Recarga | Pulsar F5 y comparar con `GET /api/books`. | Conteos y grisado coinciden con la respuesta actual. Sin cambios en DB deben mantenerse los valores; no aparecen cupos inventados. |
 | Una respuesta de libros | En las herramientas del navegador, abrir Red, limpiar el registro y recargar. | Una llamada a `/api/books` contiene metadatos y `availability` de todos los libros. No hay llamada separada a `/api/availability`. Las consultas de sesión y materias son independientes y esperadas. |
@@ -42,9 +43,10 @@ La acción de unirse a la cola queda pendiente de SCRUM-23. Las operaciones de
 solicitar préstamos, aceptar reservas, leer PDFs y listar préstamos personales
 no se consideran implementadas por esta prueba de disponibilidad.
 
-La entrega automática de turnos y notificaciones tampoco se activa: los estados
-se prepararon directamente con Prisma, manteniendo las relaciones y las duraciones
-de la base. Si se repiten estos escenarios otro día, revisar fechas y datos antes
+El envío de correos sigue pendiente. Las recargas ahora concilian el libro y
+pueden crear ofertas, registrar avisos o cerrar registros vencidos. Los datos
+iniciales se prepararon con Prisma, manteniendo las relaciones y duraciones.
+Si se repiten estos escenarios otro día, revisar fechas y datos antes
 de asumir que siguen vigentes los mismos resultados.
 
 ## Cambios controlados durante la prueba de recarga

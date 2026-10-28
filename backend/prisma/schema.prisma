@@ -18,18 +18,19 @@ model University {
 }
 
 model User {
-  id           String        @id @default(uuid()) @db.Uuid
-  firstName    String        @map("first_name")
-  lastName     String        @map("last_name")
-  universityId String        @map("university_id") @db.Uuid
-  email        String        @unique
-  passwordHash String        @map("password_hash")
-  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  university   University    @relation(fields: [universityId], references: [id], onDelete: Restrict)
-  sessions     Session[]
-  loans        Loan[]
-  queueEntries QueueEntry[]
-  reservations Reservation[]
+  id            String               @id @default(uuid()) @db.Uuid
+  firstName     String               @map("first_name")
+  lastName      String               @map("last_name")
+  universityId  String               @map("university_id") @db.Uuid
+  email         String               @unique
+  passwordHash  String               @map("password_hash")
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  university    University           @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  sessions      Session[]
+  loans         Loan[]
+  queueEntries  QueueEntry[]
+  reservations  Reservation[]
+  notifications NotificationOutbox[]
 
   @@map("users")
 }
@@ -105,34 +106,36 @@ model BookSubject {
 // SCRUM-18: persistencia compartida para calcular disponibilidad.
 // Los CHECK e índices parciales se mantienen en la migración SQL.
 model QueueEntry {
-  id          String       @id @default(uuid()) @db.Uuid
-  userId      String       @map("user_id") @db.Uuid
-  bookId      String       @map("book_id") @db.Uuid
-  orderSeq    BigInt       @unique @default(autoincrement()) @map("order_seq")
-  joinedAt    DateTime     @default(now()) @map("joined_at") @db.Timestamptz(6)
-  state       String       @default("WAITING") @db.Text
-  closedAt    DateTime?    @map("closed_at") @db.Timestamptz(6)
-  user        User         @relation(fields: [userId], references: [id], onDelete: Restrict)
-  book        Book         @relation(fields: [bookId], references: [id], onDelete: Restrict)
-  reservation Reservation?
+  id            String               @id @default(uuid()) @db.Uuid
+  userId        String               @map("user_id") @db.Uuid
+  bookId        String               @map("book_id") @db.Uuid
+  orderSeq      BigInt               @unique @default(autoincrement()) @map("order_seq")
+  joinedAt      DateTime             @default(now()) @map("joined_at") @db.Timestamptz(6)
+  state         String               @default("WAITING") @db.Text
+  closedAt      DateTime?            @map("closed_at") @db.Timestamptz(6)
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  book          Book                 @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  reservation   Reservation?
+  notifications NotificationOutbox[]
 
   @@unique([id, userId, bookId])
   @@map("queue_entries")
 }
 
 model Reservation {
-  id           String     @id @default(uuid()) @db.Uuid
-  queueEntryId String     @unique @map("queue_entry_id") @db.Uuid
-  userId       String     @map("user_id") @db.Uuid
-  bookId       String     @map("book_id") @db.Uuid
-  offeredAt    DateTime   @default(now()) @map("offered_at") @db.Timestamptz(6)
-  expiresAt    DateTime   @map("expires_at") @db.Timestamptz(6)
-  state        String     @default("HELD") @db.Text
-  closedAt     DateTime?  @map("closed_at") @db.Timestamptz(6)
-  user         User       @relation(fields: [userId], references: [id], onDelete: Restrict)
-  book         Book       @relation(fields: [bookId], references: [id], onDelete: Restrict)
-  queueEntry   QueueEntry @relation(fields: [queueEntryId, userId, bookId], references: [id, userId, bookId], onDelete: Restrict)
-  loan         Loan?
+  id            String               @id @default(uuid()) @db.Uuid
+  queueEntryId  String               @unique @map("queue_entry_id") @db.Uuid
+  userId        String               @map("user_id") @db.Uuid
+  bookId        String               @map("book_id") @db.Uuid
+  offeredAt     DateTime             @default(now()) @map("offered_at") @db.Timestamptz(6)
+  expiresAt     DateTime             @map("expires_at") @db.Timestamptz(6)
+  state         String               @default("HELD") @db.Text
+  closedAt      DateTime?            @map("closed_at") @db.Timestamptz(6)
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  book          Book                 @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  queueEntry    QueueEntry           @relation(fields: [queueEntryId, userId, bookId], references: [id, userId, bookId], onDelete: Restrict)
+  loan          Loan?
+  notifications NotificationOutbox[]
 
   @@unique([id, userId, bookId])
   // Prisma exige la clave completa para representar esta relación 1:1 compuesta.
@@ -141,17 +144,50 @@ model Reservation {
 }
 
 model Loan {
-  id            String       @id @default(uuid()) @db.Uuid
-  userId        String       @map("user_id") @db.Uuid
-  bookId        String       @map("book_id") @db.Uuid
-  reservationId String?      @unique @map("reservation_id") @db.Uuid
-  startedAt     DateTime     @default(now()) @map("started_at") @db.Timestamptz(6)
-  dueAt         DateTime     @map("due_at") @db.Timestamptz(6)
-  closedAt      DateTime?    @map("closed_at") @db.Timestamptz(6)
-  user          User         @relation(fields: [userId], references: [id], onDelete: Restrict)
-  book          Book         @relation(fields: [bookId], references: [id], onDelete: Restrict)
-  reservation   Reservation? @relation(fields: [reservationId, userId, bookId], references: [id, userId, bookId], onDelete: Restrict)
+  id            String               @id @default(uuid()) @db.Uuid
+  userId        String               @map("user_id") @db.Uuid
+  bookId        String               @map("book_id") @db.Uuid
+  reservationId String?              @unique @map("reservation_id") @db.Uuid
+  startedAt     DateTime             @default(now()) @map("started_at") @db.Timestamptz(6)
+  dueAt         DateTime             @map("due_at") @db.Timestamptz(6)
+  closedAt      DateTime?            @map("closed_at") @db.Timestamptz(6)
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  book          Book                 @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  reservation   Reservation?         @relation(fields: [reservationId, userId, bookId], references: [id, userId, bookId], onDelete: Restrict)
+  notifications NotificationOutbox[]
 
   @@unique([reservationId, userId, bookId])
   @@map("loans")
+}
+
+model NotificationOutbox {
+  id                String       @id @default(uuid()) @db.Uuid
+  userId            String       @map("user_id") @db.Uuid
+  loanId            String?      @map("loan_id") @db.Uuid
+  reservationId     String?      @map("reservation_id") @db.Uuid
+  queueEntryId      String?      @map("queue_entry_id") @db.Uuid
+  kind              String       @db.Text
+  dedupKey          String       @unique @map("dedup_key") @db.Text
+  recipientEmail    String       @map("recipient_email") @db.Text
+  payload           Json         @db.JsonB
+  scheduledAt       DateTime     @map("scheduled_at") @db.Timestamptz(6)
+  nextAttemptAt     DateTime     @map("next_attempt_at") @db.Timestamptz(6)
+  state             String       @default("PENDING") @db.Text
+  attemptCount      Int          @default(0) @map("attempt_count")
+  claimedAt         DateTime?    @map("claimed_at") @db.Timestamptz(6)
+  leaseExpiresAt    DateTime?    @map("lease_expires_at") @db.Timestamptz(6)
+  claimToken        String?      @map("claim_token") @db.Uuid
+  sentAt            DateTime?    @map("sent_at") @db.Timestamptz(6)
+  providerMessageId String?      @map("provider_message_id") @db.Text
+  lastError         String?      @map("last_error") @db.Text
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  loan              Loan?        @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  reservation       Reservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  queueEntry        QueueEntry?  @relation(fields: [queueEntryId], references: [id], onDelete: Restrict)
+
+  @@index([loanId])
+  @@index([reservationId])
+  @@index([queueEntryId])
+  @@map("notification_outbox")
 }

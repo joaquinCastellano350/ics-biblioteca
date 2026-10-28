@@ -16,13 +16,14 @@ Los CHECK, los índices parciales y `GENERATED ALWAYS AS IDENTITY` se mantienen 
 SQL. Prisma necesita además claves únicas compuestas para representar las
 relaciones 1:1, aunque los identificadores de origen ya sean únicos por separado.
 
-## Base compartida de lectura
+## Base compartida de circulación
 
 `backend/src/circulation/` contiene únicamente lo necesario para la disponibilidad:
 
 - `circulation.ts`: contratos de ocupación interna y disponibilidad pública.
 - `circulation-repository-interface.ts`: consulta de ocupación por IDs de libros.
-- `circulation-repository.ts`: lectura de relaciones y conteos filtrados con Prisma.
+- `circulation-repository.ts`: transacción SERIALIZABLE y reintentos limitados.
+- `circulation-reconciler.ts`: cierres, rechazos y ofertas persistidos con Prisma.
 - `circulation-controller.ts`: calcula los cupos solicitables.
 
 No hay archivo de rutas porque SCRUM-18 no necesita otro endpoint: el controlador
@@ -39,29 +40,30 @@ El instante `t` procede de PostgreSQL. La disponibilidad no es un contador
 persistido: es total menos préstamos vigentes y reservas vigentes, después de
 respetar la prioridad de la cola.
 
-Hasta implementar la asignación de turnos, la lectura también retiene del conteo
-los cupos pendientes para entradas WAITING elegibles: el estudiante tiene menos
-de cinco préstamos vigentes y no tiene prestado ni reservado ese mismo libro.
-Por ejemplo, dos cupos libres y una espera elegible dejan uno solicitable.
-Las reservas HELD vigentes ya se descuentan por separado. Las lecturas de Prisma
-se ejecutan en una transacción `RepeatableRead`, con una misma instantánea.
-Se usa `findMany`, `select`, filtros de relaciones y `_count`: no se escriben a
-mano los joins ni las subconsultas de ocupación. La única consulta SQL explícita
-es `SELECT transaction_timestamp() AS now`, que obtiene un instante del reloj de
-PostgreSQL para todos los filtros; no se sustituye por el reloj de Node o del
-navegador. La elegibilidad de las esperas se resuelve con los conteos e IDs
-seleccionados de sus relaciones, sin cargar datos personales.
+Antes de devolver la disponibilidad se cierran vencimientos pendientes y se
+atiende WAITING por `order_seq`, hasta agotar capacidad o cola. Si al llegar su
+turno el estudiante tiene cinco préstamos vigentes, la entrada pasa a
+REJECTED_LIMIT con `closed_at`; bajar luego a cuatro no la reactiva. Para cada
+persona elegible se crea una reserva HELD de 24 horas y la entrada pasa a OFFERED.
+El conteo descuenta esas reservas reales; ya no resta una proyección de esperas.
 
-Este cálculo es una proyección de lectura: no asigna un turno ni crea una reserva,
-no cierra registros, no modifica entradas, no envía avisos y no sustituye el
-procesamiento transaccional de SCRUM-25/27. Al implementar esos tickets, sus
-operaciones podrán reutilizar esta carpeta e incorporar la conciliación del
-modelo (que modifica entidades y registra avisos) sin duplicar el conteo.
+Las operaciones usan Prisma dentro de SERIALIZABLE y bloquean los libros por ID
+ascendente. Las únicas consultas SQL explícitas son `FOR UPDATE` (Prisma no expone
+ese bloqueo) y el reloj de PostgreSQL obtenido después de adquirir los bloqueos.
+Los conflictos de serialización/interbloqueos reintentan la transacción completa,
+hasta tres intentos; al agotarlos se responde el error recuperable del catálogo.
+
+La nueva migración `20261027000000_circulation_outbox` crea `notification_outbox`
+según el modelo compartido. Rechazos y ofertas registran avisos PENDING en su
+misma transacción, con claves únicas de deduplicación. No se envían correos ni
+se implementa un worker: la entrega queda pendiente de la historia de avisos.
+Ver [la conciliación y sus pruebas de regresión](scrum-18-conciliacion.md).
 
 El límite de cinco préstamos, la capacidad simultánea, la coherencia entre
 transiciones de varias tablas y la prioridad de la cola requieren transacciones
 en los servicios de circulación. No quedan garantizados por esta migración.
-El outbox y los avisos corresponden a Notificaciones y no se crean aquí.
+Las futuras escrituras de préstamos/colas deben reutilizar el mismo protocolo;
+sus endpoints y el envío de avisos no se incorporan en esta corrección.
 
 SCRUM-18 muestra la disponibilidad. Solicitar un préstamo es SCRUM-20, entrar a
 la cola es SCRUM-23, ofrecer turnos es SCRUM-25, aceptar reservas es SCRUM-26 y

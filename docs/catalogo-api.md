@@ -43,6 +43,10 @@ El controlador consulta Circulación una vez por lote para los libros del result
 y solo expone los cupos disponibles y totales. No devuelve identidades ni estados
 de préstamos, reservas o esperas. Si falla la disponibilidad o falta un conteo,
 responde 503; no inventa cupos ni entrega una respuesta parcial.
+La consulta concilia los libros antes de calcular: procesa cierres pendientes,
+rechaza de forma persistente las esperas que alcanzaron cinco préstamos al llegar
+su turno y crea reservas para las primeras personas elegibles. Los avisos quedan
+guardados en el outbox, sin envío externo. Repetir el GET no duplica efectos.
 El frontend muestra disponibles/total y grisa las tarjetas sin cupos, conservando
 legibilidad y sin deshabilitar el contenedor. Consulta al entrar, recargar o
 cambiar filtros; no consulta automáticamente ni agrega otro endpoint.

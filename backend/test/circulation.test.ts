@@ -53,7 +53,7 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
       await db.loan.create({ data: { userId: closed!.id, bookId: target.id, startedAt: at(-482), dueAt: at(-2), closedAt: at(-1) } });
       await db.loan.create({ data: { userId: future!.id, bookId: target.id, startedAt: at(1), dueAt: at(481) } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 3 }]);
-      assert.equal((await db.loan.findUniqueOrThrow({ where: { id: stale.id } })).closedAt, null);
+      assert.ok((await db.loan.findUniqueOrThrow({ where: { id: stale.id } })).closedAt);
     });
 
     await t.test('descuenta reservas HELD vigentes, no vencidas ni terminales', async () => {
@@ -69,12 +69,11 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
           ...(state === 'HELD' ? {} : { closedAt: at(0) }),
         } });
       }
-      const before = await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 3 }]);
-      assert.deepEqual(await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } }), before);
+      assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'EXPIRED' } }), 2);
     });
 
-    await t.test('la cola elegible retiene solo los cupos que necesita y no crea reservas', async () => {
+    await t.test('la cola elegible recibe reservas reales antes de informar disponibilidad', async () => {
       const target = await book(3);
       const waiting = await Promise.all([user(), user()]);
       for (const person of waiting) {
@@ -85,8 +84,8 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
         userId: terminalPerson.id, bookId: target.id, joinedAt: at(-1), state: 'CANCELLED', closedAt: at(0),
       } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 3, availableCopies: 1 }]);
-      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 0);
-      assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'WAITING' } }), 2);
+      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 2);
+      assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'OFFERED' } }), 2);
     });
 
     await t.test('una espera con cinco préstamos vigentes no retiene capacidad para un turno', async () => {
@@ -100,17 +99,18 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 2, availableCopies: 2 }]);
     });
 
-    await t.test('no descuenta dos veces una espera que ya tiene el libro prestado o reservado', async () => {
+    await t.test('descuenta préstamo y oferta una vez, sin duplicar la reserva al recargar', async () => {
       const target = await book();
       const borrower = await user();
       await db.loan.create({ data: { userId: borrower.id, bookId: target.id, startedAt: at(-1), dueAt: at(479) } });
-      await db.queueEntry.create({ data: { userId: borrower.id, bookId: target.id } });
       const person = await user();
-      const entry = await db.queueEntry.create({ data: { userId: person.id, bookId: target.id } });
+      const entry = await db.queueEntry.create({ data: { userId: person.id, bookId: target.id, state: 'OFFERED' } });
       await db.reservation.create({ data: {
         userId: person.id, bookId: target.id, queueEntryId: entry.id, offeredAt: at(-1), expiresAt: at(23),
       } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 2 }]);
+      assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 2 }]);
+      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 1);
     });
 
     await t.test('cada lectura refleja cambios y el conteo nunca es negativo', async () => {
