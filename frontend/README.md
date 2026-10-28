@@ -1,7 +1,9 @@
 # Frontend
 
 SCRUM-22 entrega `ReadBookButton` y `LoanReadingService` para abrir PDFs autorizados.
-Su incorporación a la lista de «Mis préstamos» queda para SCRUM-21; ver el
+Está conectado al catálogo y a la confirmación del préstamo. Su incorporación a
+«Mis préstamos» espera la pantalla de SCRUM-21; la acción sigue perteneciendo a
+SCRUM-22. Ver el
 [contrato y ejemplo de integración](../docs/scrum-22-lectura.md).
 
 Workspace `@ics-biblioteca/frontend`: Angular 22, componentes standalone, PrimeNG 22, routing, CSS y salida estática. Implementa el catálogo público de SCRUM-13, el registro de SCRUM-7 y el diálogo de login de SCRUM-8. Conserva el tema `bibliotecaTheme` y las fuentes del equipo. SCRUM-6 incorpora la landing y la cabecera, navegación y pie compartidos.

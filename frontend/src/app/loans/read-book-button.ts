@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, linkedSignal, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
@@ -7,15 +7,15 @@ import { MessageModule } from 'primeng/message';
 import { AuthService } from '../auth/auth.service';
 import { LoanReadingService } from './loan-reading-service';
 
-/** SCRUM-21 lo coloca en cada préstamo vigente: <app-read-book-button [loanId]="loan.id" />. */
+/** Acción de SCRUM-22; recibe el UUID del préstamo, no el del libro. */
 @Component({
   selector: 'app-read-book-button',
   imports: [ButtonModule, MessageModule],
   template: `
     <button pButton type="button" (click)="read()"
       [disabled]="pending() || auth.authenticating() || auth.status() === 'loading' || auth.status() === 'unavailable'"
-      [attr.aria-busy]="pending()" aria-label="Leer online (abre una pestaña nueva)">
-      {{ pending() ? 'Abriendo…' : 'Leer online' }}
+      [attr.aria-busy]="pending()" [attr.aria-label]="label() + ' (abre una pestaña nueva)'">
+      {{ pending() ? 'Abriendo…' : label() }}
       <i class="pi pi-external-link" aria-hidden="true"></i>
     </button>
     @if (error()) { <p-message severity="error" role="alert">{{ error() }}</p-message> }
@@ -28,6 +28,8 @@ import { LoanReadingService } from './loan-reading-service';
 })
 export class ReadBookButton {
   readonly loanId = input.required<string>();
+  readonly label = input('Leer online');
+  readonly unavailable = output<void>();
   protected readonly auth = inject(AuthService);
   private readonly reading = inject(LoanReadingService);
   private readonly destroyRef = inject(DestroyRef);
@@ -67,6 +69,7 @@ export class ReadBookButton {
         this.error.set(error.status === 404
           ? 'Este préstamo ya no está vigente o no está disponible para tu cuenta.'
           : 'No pudimos abrir el PDF. Intentá nuevamente.');
+        if (error.status === 404) this.unavailable.emit();
       },
     });
   }

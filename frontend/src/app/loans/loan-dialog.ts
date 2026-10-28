@@ -9,10 +9,11 @@ import { AuthService } from '../auth/auth.service';
 import { DOCUMENT } from '@angular/common';
 import type { Book } from '../catalog/book';
 import { LoanService, type GrantedLoan } from './loan-service';
+import { ReadBookButton } from './read-book-button';
 
 @Component({
   selector: 'app-loan-dialog',
-  imports: [DialogModule, ButtonModule, MessageModule],
+  imports: [DialogModule, ButtonModule, MessageModule, ReadBookButton],
   templateUrl: './loan-dialog.html',
   styleUrl: './loan-dialog.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
