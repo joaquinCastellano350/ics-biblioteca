@@ -20,6 +20,7 @@ import { LoanService, type GrantedLoan } from './loan-service';
 export class LoanDialog {
   readonly book = input<Book | null>(null);
   readonly closed = output<void>();
+  readonly granted = output<GrantedLoan>();
   readonly auth = inject(AuthService);
   private readonly loans = inject(LoanService);
   private readonly destroyRef = inject(DestroyRef);
@@ -60,7 +61,11 @@ export class LoanDialog {
       takeUntilDestroyed(this.destroyRef),
       finalize(() => this.pending.set(false)),
     ).subscribe({
-      next: ({ loan }) => this.loan.set(loan),
+      next: ({ loan }) => {
+        if (this.loan()) return;
+        this.loan.set(loan);
+        this.granted.emit(loan);
+      },
       error: (error: unknown) => {
         const code = error instanceof HttpErrorResponse ? error.error?.error?.code : undefined;
         this.noCopies.set(code === 'NO_AVAILABLE_COPIES');

@@ -54,7 +54,64 @@ h2 {
 .register-invite a {
   font-weight: 650;
 }
+.content-section-header, .reserve-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.query-loading, .query-error {
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+  padding-block: 32px;
+}
+.ready-section {
+  background: #edf3e3;
+  border: 1px solid #c8d9b2;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 30px;
+}
+.ready-section h2, .loans-columns h2 {
+  margin-bottom: 18px;
+}
+.loans-columns {
+  display: grid;
+  grid-template-columns: 1.65fr 1fr;
+  gap: 30px;
+  align-items: start;
+}
+.loan-card, .waiting-panel {
+  padding: 22px;
+  background: white;
+  border: 1px solid var(--bdu-line);
+  border-radius: 11px;
+  margin-bottom: 14px;
+}
+.loan-card h3, .waiting-item h3, .reserve-row h3 {
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.loan-card p, .reserve-row p, .waiting-item p {
+  margin-top: 12px;
+  font-size: 0.85rem;
+}
+.waiting-item + .waiting-item, .reserve-row + .reserve-row {
+  border-top: 1px solid var(--bdu-line);
+  padding-top: 20px;
+  margin-top: 20px;
+}
+.remaining { font-weight: 650; }
+.empty-state, .reading-note { color: var(--bdu-muted); font-size: 0.85rem; line-height: 1.6; }
+.reading-note { margin-block: 20px; }
+@media (max-width: 850px) {
+  .loans-columns { grid-template-columns: 1fr; gap: 16px; }
+}
 @media (max-width: 600px) {
+  .content-section-header, .reserve-row { align-items: flex-start; flex-direction: column; }
   .loans-page {
     padding-block: 35px 45px;
   }

@@ -33,6 +33,8 @@ describe('confirmación de préstamo', () => {
   afterEach(() => http.verify());
 
   it('no solicita al abrir; confirma una sola vez y presenta el vencimiento recibido', () => {
+    const granted = vi.fn();
+    fixture.componentInstance.granted.subscribe(granted);
     http.expectNone('/api/loans');
     expect(fixture.nativeElement.textContent).toContain('480 horas');
     fixture.componentInstance.confirm();
@@ -47,6 +49,7 @@ describe('confirmación de préstamo', () => {
     expect(fixture.nativeElement.textContent).toContain('noviembre');
     fixture.componentInstance.confirm();
     http.expectNone('/api/loans');
+    expect(granted).toHaveBeenCalledExactlyOnceWith(loan);
   });
   it('no cierra durante la confirmación y permite reintentar un fallo recuperable', () => {
     const closed = vi.fn();
@@ -72,10 +75,13 @@ describe('confirmación de préstamo', () => {
     http.expectNone('/api/loans');
   });
   it('explica el límite y no expone mensajes internos del servidor', () => {
+    const granted = vi.fn();
+    fixture.componentInstance.granted.subscribe(granted);
     fixture.componentInstance.confirm();
     http.expectOne('/api/loans').flush({ error: { code: 'LOAN_LIMIT_REACHED', message: 'dato privado' } }, { status: 409, statusText: 'Conflict' });
     expect(fixture.componentInstance.error()).toContain('cinco préstamos activos');
     expect(fixture.componentInstance.error()).not.toContain('dato privado');
+    expect(granted).not.toHaveBeenCalled();
   });
   it('al recibir AUTH_REQUIRED abre login y exige una nueva confirmación', () => {
     fixture.componentInstance.confirm();

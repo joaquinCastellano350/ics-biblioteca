@@ -12,13 +12,16 @@ import { SelectModule, Select } from 'primeng/select';
 import { InputTextModule } from 'primeng/inputtext';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
+import { MessageModule } from 'primeng/message';
 import { EMPTY, Subject, catchError, of, switchMap, timer } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
 import { LoanDialog } from '../loans/loan-dialog';
+import { LoanQueryService } from '../loans/loan-query.service';
+import type { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-catalog-page',
-  imports: [BookCard, LoanDialog, ButtonModule, CheckboxModule, ProgressSpinnerModule, SelectModule, FormsModule, InputTextModule, IconFieldModule, InputIconModule],
+  imports: [BookCard, LoanDialog, ButtonModule, CheckboxModule, ProgressSpinnerModule, SelectModule, FormsModule, InputTextModule, IconFieldModule, InputIconModule, MessageModule],
   templateUrl: './catalog-page.html',
   styleUrl: './catalog-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,18 +31,50 @@ export class CatalogPage {
   @ViewChild('subjectSelect') private subjectSelect?: Select;
   private readonly catalog = inject(CatalogService);
   private readonly auth = inject(AuthService);
+  readonly personal = inject(LoanQueryService);
+  readonly personalRequestError = computed(() => this.auth.status() === 'authenticated' && this.personal.error()
+    ? 'No pudimos comprobar tus préstamos. Reintentá para continuar' : '');
   readonly requestedBook = signal<Book | null>(null);
+  private grantedInDialog = false;
+  private availabilityRequest: Subscription | undefined;
+  private availabilityCriteria: CatalogSearchCriteria | undefined;
 
   requestLoan(book: Book): void {
-    if (this.auth.ensureAuthenticated()) this.requestedBook.set(book);
+    if (book.availability.availableCopies === 0 || this.personalRequestError() || this.personal.bookState(book.id)?.disabledReason) return;
+    if (this.auth.ensureAuthenticated()) {
+      this.grantedInDialog = false;
+      this.requestedBook.set(book);
+    }
+  }
+
+  onLoanGranted(): void {
+    if (this.grantedInDialog) return;
+    this.grantedInDialog = true;
+    this.personal.invalidate();
+    this.personal.refresh();
   }
 
   closeLoanDialog(): void {
     this.requestedBook.set(null);
+    if (!this.grantedInDialog) this.personal.refresh();
+    this.grantedInDialog = false;
+    this.refreshAvailability();
+  }
+
+  refreshPersonal(): void {
+    this.personal.refresh();
+    this.refreshAvailability();
+  }
+
+  @HostListener('window:focus')
+  refreshAvailability(): void {
     // Recargar también tras un conflicto de cupos, conservando los filtros.
     // Conserva las tarjetas para devolver el foco al botón que abrió el modal.
     const criteria = this.criteria;
-    this.catalog.findAll(criteria).pipe(
+    if (this.availabilityRequest && !this.availabilityRequest.closed && criteria === this.availabilityCriteria) return;
+    this.availabilityRequest?.unsubscribe();
+    this.availabilityCriteria = criteria;
+    this.availabilityRequest = this.catalog.findAll(criteria).pipe(
       takeUntilDestroyed(this.destroyRef), catchError(() => EMPTY),
     ).subscribe(({ books }) => { if (criteria === this.criteria) this.books.set(books); });
   }
@@ -76,6 +111,7 @@ export class CatalogPage {
   private readonly authorSearches = new Subject<string | null>();
 
   constructor() {
+    this.personal.connect(this.destroyRef);
     this.searches.pipe(
       // El nuevo evento cancela inmediatamente el timer o la consulta anterior.
       // Solo las pulsaciones esperan; filtros, limpieza y reintento son inmediatos.
