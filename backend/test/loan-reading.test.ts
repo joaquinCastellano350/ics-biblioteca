@@ -38,6 +38,10 @@ test('lectura: Prisma verifica titularidad y vigencia sin modificar circulación
   assert.equal(active?.pdfObjectKey, 'privado/0.pdf');
   assert.equal(active?.dueAt.getTime(), loans[0]!.dueAt.getTime());
   assert.ok(active?.serverTime instanceof Date);
+  const readable = await repository.findReadable(owner.id);
+  assert.equal(readable.ownerId, owner.id);
+  assert.deepEqual(readable.loans, [{ id: loans[0]!.id, bookId: loans[0]!.bookId, dueAt: loans[0]!.dueAt }]);
+  assert.deepEqual((await repository.findReadable(other.id)).loans, []);
   assert.equal(await repository.findReading(loans[0]!.id, other.id), null);
   assert.equal(await repository.findReading(randomUUID(), owner.id), null);
   for (const loan of loans.slice(1)) assert.equal(await repository.findReading(loan.id, owner.id), null);
@@ -73,7 +77,10 @@ test('lectura: firma S3 breve, inline y sin superar due_at, con precisión de se
 });
 
 test('lectura: no firma sin un préstamo autorizado', async () => {
-  const controller = new LoanController({ findReading: async () => null }, {
+  const controller = new LoanController({
+    findReading: async () => null,
+    findReadable: async () => { throw new Error('No se usa'); },
+  }, {
     sign: async () => { assert.fail('No se debe firmar un préstamo sin autorización'); },
   });
   assert.equal(await controller.read(randomUUID(), randomUUID()), null);
@@ -106,7 +113,11 @@ test('lectura HTTP: sesión, autorización, protección y errores sin datos priv
       assert.equal(user, userId);
       return { created: true, loan: { id: loanId, bookId, startedAt: serverTime, dueAt: new Date('2026-11-16T12:00:00Z') } };
     } },
-    loanReading: { findReading: async (id, user) => {
+    loanReading: { findReadable: async (user) => {
+      assert.equal(user, userId);
+      if (fail) throw new Error('No exponer detalles del repositorio');
+      return { ownerId: user, serverTime, loans: [{ id: loanId, bookId: 'libro', dueAt: new Date('2026-10-28T12:00:00Z'), pdfObjectKey: 'oculto' }] };
+    }, findReading: async (id, user) => {
       lookups++;
       assert.equal(user, userId);
       if (fail) throw new Error('postgresql://credencial-no-exponer');
@@ -119,6 +130,14 @@ test('lectura HTTP: sesión, autorización, protección y errores sin datos priv
   const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/loans`;
   const headers = { Cookie: `biblioteca_session=${'a'.repeat(43)}`, 'X-Biblioteca-Request': '1' };
   const read = (id = loanId, auth = headers) => fetch(`${endpoint}/${id}/read-access`, { method: 'POST', headers: auth });
+  assert.equal((await fetch(`${endpoint}/readable`)).status, 401);
+  const readable = await fetch(`${endpoint}/readable?userId=ajeno`, { headers });
+  assert.equal(readable.status, 200);
+  assert.equal(readable.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await readable.json(), {
+    ownerId: userId, serverTime: serverTime.toISOString(),
+    loans: [{ id: loanId, bookId: 'libro', dueAt: '2026-10-28T12:00:00.000Z' }],
+  });
   // Ambos routers comparten /api/loans. El de lectura no debe interceptar
   // concesiones ni sustituir el repositorio de SCRUM-20.
   const grant = await fetch(endpoint, {
@@ -138,6 +157,7 @@ test('lectura HTTP: sesión, autorización, protección y errores sin datos priv
   assert.deepEqual(await success.json(), { url: 'https://assets.example.org/archivo.pdf?firma=breve', expiresAt: '2026-10-27T12:05:00Z' });
   assert.equal((await read(randomUUID())).status, 404);
   fail = true;
+  assert.equal((await fetch(`${endpoint}/readable`, { headers })).status, 503);
   const failure = await read();
   assert.equal(failure.status, 503);
   assert.equal((await failure.text()).includes('credencial'), false);

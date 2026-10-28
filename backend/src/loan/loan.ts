@@ -13,3 +13,10 @@ export interface PdfAccess {
 export interface PdfAccessSigner {
   sign(reading: LoanReading): Promise<PdfAccess | null>;
 }
+
+/** Solo los datos que necesita el catálogo para ubicar la acción de lectura. */
+export interface ReadableLoans {
+  readonly ownerId: string;
+  readonly serverTime: Date;
+  readonly loans: readonly { readonly id: string; readonly bookId: string; readonly dueAt: Date }[];
+}

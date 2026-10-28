@@ -5,14 +5,16 @@
 La [historia](https://joaquincastellano350.atlassian.net/browse/SCRUM-22), la
 [épica de préstamos](https://joaquincastellano350.atlassian.net/browse/SCRUM-19)
 y la [maqueta](referencias/biblioteca-digital-universitaria.html) ubican «Leer
-online» en cada préstamo vigente de «Mis préstamos». El PDF se abre en otra
-pestaña. La aceptación de reservas aparece en esa misma pantalla y desde el
+online» en cada préstamo vigente de «Mis préstamos» y en el catálogo para los
+libros ya prestados a esa cuenta; la confirmación ofrece «Empezar a leer».
+El PDF se abre en otra pestaña. La aceptación de reservas aparece en «Mis préstamos» y desde el
 enlace del correo; corresponde a SCRUM-26, pendiente.
 
-Por el acuerdo de alcance de esta entrega, SCRUM-22 implementa la autorización,
-la firma del acceso privado y el componente reutilizable. SCRUM-21 consultará y
-mostrará las listas propias e incorporará el componente; no se agrega aquí otra
-lista ni una pantalla provisoria. SCRUM-20 ya crea los préstamos en `develop`;
+SCRUM-22 implementa la autorización, la firma del acceso privado y el componente
+de lectura, conectado al catálogo y a la confirmación de SCRUM-20. La integración
+del botón en «Mis préstamos» también corresponde a SCRUM-22, pero espera a la
+pantalla de SCRUM-21. No se agrega aquí otra lista ni una pantalla provisoria.
+SCRUM-20 ya crea los préstamos en `develop`;
 también se puede verificar la lectura con préstamos de prueba ya persistidos.
 
 Revisión del 28/10/2026: SCRUM-21 está implementado en el
@@ -35,6 +37,26 @@ ni datos iniciales nuevos. No implementa visor propio, lectura offline o protecc
 anticopia; el navegador puede permitir guardar una copia autorizada.
 
 ## Contrato de lectura
+
+`GET /api/loans/readable`, protegido por sesión, entrega exclusivamente
+`ownerId`, `serverTime` y `loans: [{ id, bookId, dueAt }]` de los préstamos vigentes
+de esa cuenta. Es una consulta mínima para ubicar el botón en el catálogo; no
+devuelve títulos, autores, esperas, posiciones, reservas ni claves del bucket.
+El catálogo público conserva su contrato sin datos personales. La respuesta
+privada usa `Cache-Control: no-store` y no se guarda en almacenamiento del navegador.
+
+`CatalogReadingState`, limitado a la vida del catálogo, consulta al entrar,
+autenticar o confirmar un préstamo. Cancela peticiones al cambiar de cuenta y
+comprueba que `ownerId` coincida con la identidad que pidió los datos, incluso
+si la cookie cambió antes de que terminara una revalidación de sesión. Un
+temporizador retira los accesos al vencer, con referencia al reloj del servidor;
+no hace polling, no cierra préstamos y no implementa SCRUM-27. Si falla la carga,
+permite reintentar sin ocultar el catálogo público.
+
+Una tarjeta con préstamo propio muestra «Leer online» aunque no queden cupos para
+otras personas. Al conceder el préstamo, la confirmación muestra «Empezar a leer»
+con el UUID recién recibido y actualiza las lecturas del catálogo. Ambos usan el
+mismo componente y piden una firma nueva en cada clic.
 
 `POST /api/loans/:loanId/read-access`, con cookie de sesión vigente y encabezado
 `X-Biblioteca-Request: 1`. No recibe identificadores de usuario, claves del bucket
@@ -110,13 +132,18 @@ no queda una lectura pendiente que pueda ejecutarse bajo otra cuenta.
 - `frontend/src/app/loans/read-book-button.spec.ts`: apertura y bloqueo de pestañas,
   doble clic, error de vigencia, reautenticación, cambio de cuenta, destrucción
   del componente y rechazo de protocolos distintos de HTTPS.
+- `catalog-reading-state.spec.ts`: aislamiento entre cuentas, cancelación, errores,
+  reintento y retiro de accesos vencidos sin escrituras.
+- `frontend/e2e/reading.spec.ts`: lectura desde la confirmación y el catálogo,
+  persistencia del acceso tras recargar, nueva pestaña sin `opener`, ausencia de
+  duplicados y retiro al cerrar sesión, en escritorio, tablet y móvil.
 - Verificación de solo lectura contra Neon y el bucket configurados: un préstamo
   de prueba existente permitió obtener un PDF real por rango (`206`, `%PDF-`,
   `application/pdf`, `inline`); sin firma respondió `403` y otra cuenta no obtuvo
   acceso. No se crearon préstamos, usuarios, sesiones ni objetos para esta prueba.
 
-La prueba de navegación completa desde «Mis préstamos» queda pendiente de la
-integración de SCRUM-21. Para probar manualmente el botón antes de esa integración,
-se lo puede montar en un host de pruebas Angular con un `loanId` válido, autenticar
-al titular y pulsarlo; no hace falta implementar SCRUM-20 ni incorporar ese host
-a las rutas productivas.
+La prueba de navegación desde «Mis préstamos» queda pendiente de incorporar la
+pantalla de SCRUM-21. Para probar ahora, autenticar al titular y usar «Leer online»
+en el catálogo, o solicitar un libro disponible y pulsar «Empezar a leer» en la
+confirmación. Recargar debe conservar los accesos propios y cerrar sesión debe
+retirarlos. No se necesitan comandos de consola ni identificadores manuales.
