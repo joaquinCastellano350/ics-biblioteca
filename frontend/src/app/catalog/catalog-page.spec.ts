@@ -849,6 +849,7 @@ describe('Public catalog author filtering', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
+    expect(root.querySelector('.title-empty-state h2')?.textContent).toContain('Sin resultados');
     expect(root.querySelectorAll('[aria-label^="Quitar filtro de autor "]')).toHaveLength(1);
     expect(root.querySelectorAll('[aria-label^="Quitar materia "]')).toHaveLength(1);
     buttonByText(fixture, 'Limpiar todos los filtros').click();
