@@ -29,7 +29,11 @@ test('catálogo público sin desbordamientos ni enlaces a fichas', async ({ page
   await expect(page.getByRole('article')).toHaveCount(1);
   await expect(page.locator('article .authors li')).toHaveCount(2);
   await expect(page.locator('article .subjects li')).toHaveCount(2);
-  await expect(page.locator('article a, article button')).toHaveCount(0);
+  await expect(page.locator('article a')).toHaveCount(0);
+  // SCRUM-20 agrega la solicitud de préstamo; la tarjeta sigue sin abrir una ficha.
+  const actions = page.getByRole('article').getByRole('button');
+  await expect(actions).toHaveCount(1);
+  await expect(actions).toHaveAccessibleName(`Solicitar préstamo de ${books[0]!.title}`);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('catalog.png'), fullPage: true });
 });
