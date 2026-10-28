@@ -160,6 +160,7 @@ model Loan {
   @@map("loans")
 }
 
+// Historial de una migración ya aplicada. No se usa en el flujo de SCRUM-18.
 model NotificationOutbox {
   id                String       @id @default(uuid()) @db.Uuid
   userId            String       @map("user_id") @db.Uuid

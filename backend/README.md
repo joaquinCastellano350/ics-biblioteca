@@ -104,13 +104,14 @@ se resuelven con `index.html`; una ruta API inexistente sigue devolviendo JSON
 
 `src/circulation/` reúne el contrato de ocupación y disponibilidad, la interfaz
 de repositorio, su lectura Prisma/PostgreSQL y el controlador del conteo.
-La consulta concilia vencimientos, rechaza esperas por límite cuando llega su turno
-y crea reservas reales para las personas elegibles, dentro de SERIALIZABLE y con
-bloqueos ordenados. Los avisos se registran en `notification_outbox` en la misma
-transacción; no se envían correos. Ver [la conciliación compartida](../docs/scrum-18-conciliacion.md).
+La consulta utiliza el reloj de PostgreSQL y descuenta ocupaciones vigentes y la
+capacidad pendiente para las esperas elegibles. Su única escritura es pasar una
+entrada a REJECTED_LIMIT con `closed_at` si tiene cinco préstamos al llegar su
+turno. No crea reservas, cierra vencimientos ni registra avisos.
+Ver [el arreglo puntual por límite](../docs/scrum-18-rechazo-limite.md).
 
 No expone rutas nuevas. `GET /api/books` reúne metadatos y disponibilidad por lote
-en una respuesta pública; la tarjeta muestra el conteo y el grisado. Los endpoints
-de préstamos, cola y aceptación, el proceso periódico y la entrega de correos se
-incorporarán en sus historias, reutilizando esta base. SCRUM-23 queda pendiente
+en una respuesta pública; la tarjeta muestra el conteo y el grisado. Los métodos de
+préstamos, cola, turnos, vencimientos y notificaciones se incorporarán en sus
+historias, reutilizando la persistencia y esta carpeta. SCRUM-23 queda pendiente
 de desarrollo e integración por su responsable.

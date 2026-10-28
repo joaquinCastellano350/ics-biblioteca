@@ -8,7 +8,7 @@ import type { CirculationRepositoryInterface } from '../src/circulation/circulat
 
 async function withCatalog(books: BookRepositoryInterface, check: (url: string) => Promise<void>,
   circulation: CirculationRepositoryInterface = {
-    findOccupancy: async (ids) => ids.map((bookId) => ({ bookId, totalCopies: 4, activeLoans: 1, heldReservations: 1 })),
+    findOccupancy: async (ids) => ids.map((bookId) => ({ bookId, totalCopies: 4, activeLoans: 1, heldReservations: 1, eligibleWaiters: 0 })),
   }) {
   const app = createApp({
     checkDatabase: async () => {},
@@ -143,13 +143,13 @@ test('el catálogo consulta disponibilidad en un solo lote y solo expone el cont
     assert.deepEqual(result.books.map((book: { availability: unknown }) => book.availability), [
       { availableCopies: 0, totalCopies: 2 }, { availableCopies: 0, totalCopies: 2 },
     ]);
-    assert.ok(!JSON.stringify(result).includes('activeLoans'));
+    assert.ok(!JSON.stringify(result).includes('eligibleWaiters'));
     assert.equal((await fetch(`${url}/api/availability`)).status, 404);
   }, {
     findOccupancy: async (bookIds) => {
       calls++;
       assert.deepEqual(bookIds, ids);
-      return bookIds.map((bookId) => ({ bookId, totalCopies: 2, activeLoans: 1, heldReservations: 1 }));
+      return bookIds.map((bookId) => ({ bookId, totalCopies: 2, activeLoans: 1, heldReservations: 1, eligibleWaiters: 0 }));
     },
   });
 });

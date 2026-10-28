@@ -6,11 +6,12 @@ export class CirculationController {
 
   async findAvailability(bookIds: readonly string[]): Promise<readonly BookAvailability[]> {
     const occupancy = await this.circulation.findOccupancy(bookIds);
-    return occupancy.map(({ bookId, totalCopies, activeLoans, heldReservations }) => ({
+    return occupancy.map(({ bookId, totalCopies, activeLoans, heldReservations, eligibleWaiters }) => ({
       bookId,
       totalCopies,
-      // La conciliación ya asignó las reservas de la cola en esta transacción.
-      availableCopies: Math.max(0, totalCopies - activeLoans - heldReservations),
+      // La creación de reservas queda a cargo de SCRUM-25; aquí se respeta
+      // la capacidad pendiente para las esperas elegibles sin crear ofertas.
+      availableCopies: Math.max(0, totalCopies - activeLoans - heldReservations - eligibleWaiters),
     }));
   }
 }

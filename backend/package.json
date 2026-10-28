@@ -13,7 +13,6 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "test:integration": "tsx --test test/integration/accounts.integration.test.ts",
-    "test:circulation:integration": "tsx --test test/integration/circulation.integration.test.ts",
     "check:services": "tsx scripts/check-services.ts"
   },
   "description": "API y reglas de negocio de la Biblioteca Digital Universitaria",
