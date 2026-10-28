@@ -98,8 +98,14 @@ test('lectura HTTP: sesión, autorización, protección y errores sin datos priv
   });
   let fail = false;
   let lookups = 0;
+  let requests = 0;
   const server = createApp({
     checkDatabase: async () => {}, checkStorage: async () => {}, accounts,
+    loans: { requestLoan: async (user, bookId) => {
+      requests++;
+      assert.equal(user, userId);
+      return { created: true, loan: { id: loanId, bookId, startedAt: serverTime, dueAt: new Date('2026-11-16T12:00:00Z') } };
+    } },
     loanReading: { findReading: async (id, user) => {
       lookups++;
       assert.equal(user, userId);
@@ -113,6 +119,15 @@ test('lectura HTTP: sesión, autorización, protección y errores sin datos priv
   const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/loans`;
   const headers = { Cookie: `biblioteca_session=${'a'.repeat(43)}`, 'X-Biblioteca-Request': '1' };
   const read = (id = loanId, auth = headers) => fetch(`${endpoint}/${id}/read-access`, { method: 'POST', headers: auth });
+  // Ambos routers comparten /api/loans. El de lectura no debe interceptar
+  // concesiones ni sustituir el repositorio de SCRUM-20.
+  const grant = await fetch(endpoint, {
+    method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: randomUUID() }),
+  });
+  assert.equal(grant.status, 201);
+  assert.equal(requests, 1);
+  assert.equal(lookups, 0);
+  assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
   assert.equal((await read(loanId, { ...headers, Cookie: '' })).status, 401);
   assert.equal((await read(loanId, { ...headers, 'X-Biblioteca-Request': '' })).status, 403);
   assert.equal((await read('invalido')).status, 400);
@@ -129,4 +144,5 @@ test('lectura HTTP: sesión, autorización, protección y errores sin datos priv
   assert.equal((await fetch(`${endpoint}/${loanId}/read-access`, { headers })).status, 405);
   revoked = true;
   assert.equal((await read()).status, 401);
+  assert.equal(requests, 1);
 });

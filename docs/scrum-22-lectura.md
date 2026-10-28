@@ -12,8 +12,20 @@ enlace del correo; corresponde a SCRUM-26, pendiente.
 Por el acuerdo de alcance de esta entrega, SCRUM-22 implementa la autorización,
 la firma del acceso privado y el componente reutilizable. SCRUM-21 consultará y
 mostrará las listas propias e incorporará el componente; no se agrega aquí otra
-lista ni una pantalla provisoria. SCRUM-20 creará los préstamos. Mientras tanto,
-se puede verificar la lectura con préstamos de prueba ya persistidos.
+lista ni una pantalla provisoria. SCRUM-20 ya crea los préstamos en `develop`;
+también se puede verificar la lectura con préstamos de prueba ya persistidos.
+
+Revisión del 28/10/2026: SCRUM-21 está implementado en el
+[PR #18](https://github.com/joaquinCastellano350/ics-biblioteca/pull/18), todavía
+sin integrar a `develop`. Su lista usa `PersonalLoan.id`, compatible con la
+entrada `loanId` del botón. Al integrarlo, se agrega `ReadBookButton` a los
+imports de `LoansPage` y el botón dentro de cada `.loan-card`; también se ajusta
+la prueba que actualmente exige que esas tarjetas no tengan acciones.
+No hace falta consultar ni aceptar reservas para habilitar la lectura.
+
+La consulta actual de Jira registra a SCRUM-20 como bloqueante de SCRUM-22.
+Las dependencias de SCRUM-21 y SCRUM-25 pertenecen a SCRUM-26, cuya implementación
+permanece pendiente. No se modificaron esos vínculos en Jira.
 
 El [ADR](https://joaquincastellano350.atlassian.net/wiki/spaces/SCRUM/pages/5177345)
 y el [modelo, §§4 y 7](modelo-de-datos.md) exigen comprobar titularidad y vigencia
@@ -32,6 +44,11 @@ La API reutiliza `requireSession`. `LoanReadingRepository` consulta con Prisma �
 el préstamo de esa cuenta con `closed_at IS NULL` y
 `started_at <= t < due_at`. Obtiene `t` del reloj de PostgreSQL; la única consulta
 SQL directa es la lectura de ese reloj. Conserva los registros sin modificarlos.
+
+`AppServices.loans` mantiene la concesión de SCRUM-20; `loanReading` inyecta la
+consulta de lectura y `pdfAccess` su firmante. Los routers comparten `/api/loans`,
+pero la autenticación de lectura se aplica solo a su ruta concreta, para no
+interceptar la concesión ni cambiar su contrato de protección y análisis de JSON.
 
 Respuesta `200` con `Cache-Control: no-store`:
 
