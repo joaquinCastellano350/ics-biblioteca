@@ -7,17 +7,6 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 
 export function loanReadingRoutes(accounts: AccountsService, controller: LoanController) {
   const router = Router();
-  router.get('/readable', requireSession(accounts), async (_request, response) => {
-    try {
-      const result = await controller.findReadable(response.locals['identity'].userId);
-      response.json({
-        ownerId: result.ownerId, serverTime: result.serverTime.toISOString(),
-        loans: result.loans.map(({ id, bookId, dueAt }) => ({ id, bookId, dueAt: dueAt.toISOString() })),
-      });
-    } catch {
-      response.status(503).json({ error: { code: 'READING_UNAVAILABLE', message: 'No pudimos comprobar tus lecturas. Intentá nuevamente.' } });
-    }
-  });
   router.post('/:loanId/read-access', requireSession(accounts), async (request, response) => {
     if (request.get('X-Biblioteca-Request') !== '1') {
       response.status(403).json({ error: { code: 'REQUEST_NOT_ALLOWED', message: 'La solicitud no está permitida.' } });
