@@ -11,6 +11,8 @@ import { authorRoutes } from './book/author-routes.js';
 import type { SubjectRepositoryInterface } from './subject/subject-repository-interface.js';
 import { SubjectController } from './subject/subject-controller.js';
 import { subjectRoutes } from './subject/subject-routes.js';
+import type { CirculationRepositoryInterface } from './circulation/circulation-repository-interface.js';
+import { CirculationController } from './circulation/circulation-controller.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -20,6 +22,7 @@ interface AppServices {
   listUniversities?: () => Promise<PublicUser['university'][]>;
   production?: boolean;
   books?: BookRepositoryInterface;
+  circulation?: CirculationRepositoryInterface;
   subjects?: SubjectRepositoryInterface;
   frontendDirectory?: string;
 }
@@ -29,7 +32,8 @@ export function createApp(services: AppServices) {
   app.disable('x-powered-by');
 
   if (services.books) {
-    const controller = new BookController(services.books);
+    const controller = new BookController(services.books,
+      services.circulation ? new CirculationController(services.circulation) : undefined);
     app.use('/api/books', bookRoutes(controller));
     app.use('/api/authors', authorRoutes(controller));
   }

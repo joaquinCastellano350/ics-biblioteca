@@ -1,4 +1,5 @@
-<article class="book-card" [attr.aria-labelledby]="'book-' + book().id">
+<article class="book-card" [class.unavailable]="book().availability.availableCopies === 0"
+  [attr.aria-labelledby]="'book-' + book().id">
   <p-card
     [style]="{ height: '100%' }"
     [dt]="{ root: { borderRadius: '14px', shadow: 'none' }, body: { padding: '26px' } }"
@@ -25,6 +26,13 @@
           <li [title]="subject.name">{{ subject.name }}</li>
         }
       </ul>
+    </div>
+    <div class="availability" [class.no-copies]="book().availability.availableCopies === 0">
+      <h3>Disponibilidad</h3>
+      <p><strong>{{ book().availability.availableCopies }}/{{ book().availability.totalCopies }}</strong> cupos disponibles</p>
+      @if (book().availability.availableCopies === 0) {
+        <p class="availability-note">Sin cupos disponibles</p>
+      }
     </div>
   </p-card>
 </article>

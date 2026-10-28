@@ -22,7 +22,7 @@ describe('integración de catálogo público y login', () => {
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/catalogo?q=algebra');
     http.expectOne('/api/books').flush({ books: [{
-      id: 'libro', title: 'Álgebra', authors: [{ id: 'autor', name: 'Autora' }], subjects: [],
+      availability: { availableCopies: 1, totalCopies: 1 }, id: 'libro', title: 'Álgebra', authors: [{ id: 'autor', name: 'Autora' }], subjects: [],
     }] });
     http.expectOne('/api/subjects').flush({ subjects: [] });
     await fixture.whenStable();

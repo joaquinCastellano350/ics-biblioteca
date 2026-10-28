@@ -94,6 +94,29 @@ ul {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.availability {
+  margin-top: 21px;
+  padding-top: 18px;
+  border-top: 1px solid var(--bdu-line);
+  color: #284e54;
+  font-size: 0.84rem;
+}
+.availability p { margin: 0; }
+.availability strong { font-size: 1rem; }
+.availability .availability-note { margin-top: 5px; font-size: 0.76rem; }
+/* El grisado no usa opacidad ni deshabilita el contenedor: las futuras
+   acciones de cola conservan su contraste y su interacción. */
+.unavailable p-card {
+  --p-card-background: #f0f0ed;
+  --p-card-color: #414946;
+}
+.unavailable h2,
+.unavailable .authors,
+.unavailable .book-kind,
+.unavailable .book-kind svg,
+.unavailable h3,
+.no-copies { color: #4b5350; }
+.unavailable .subjects li { background: #dedfdb; color: #414946; }
 @media (max-width: 600px) {
   .book-card {
     min-height: 295px;

@@ -18,3 +18,10 @@ export interface CatalogBook extends Pick<Book, 'id' | 'title'> {
   readonly authors: readonly CatalogTerm[];
   readonly subjects: readonly CatalogTerm[];
 }
+
+export interface AvailableCatalogBook extends CatalogBook {
+  readonly availability: {
+    readonly availableCopies: number;
+    readonly totalCopies: number;
+  };
+}

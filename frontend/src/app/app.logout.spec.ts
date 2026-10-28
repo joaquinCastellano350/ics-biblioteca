@@ -19,8 +19,8 @@ describe('App: cierre de sesión sin API real', () => {
     serverTime: '2026-10-24T12:00:00Z',
   };
   const books = [
-    { id: 'book-1', title: 'Redes de prueba', authors: [{ id: 'author', name: 'Autora de prueba' }], subjects: [] },
-    { id: 'book-2', title: 'Algoritmos de prueba', authors: [], subjects: [] },
+    { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Redes de prueba', authors: [{ id: 'author', name: 'Autora de prueba' }], subjects: [] },
+    { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-2', title: 'Algoritmos de prueba', authors: [], subjects: [] },
   ];
 
   beforeEach(async () => {

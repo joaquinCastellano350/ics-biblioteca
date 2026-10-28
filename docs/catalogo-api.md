@@ -5,7 +5,8 @@
 varios parámetros `subjectIds`. Si se reciben varias materias, alcanza con que
 el libro tenga una de ellas (OR); cuando también hay un título, ambos criterios
 se combinan (AND). Sin `subjectIds`, las materias no restringen el catálogo.
-No implementa disponibilidad ni acciones de circulación.
+SCRUM-18 añade la disponibilidad en la misma respuesta, sin otra llamada HTTP
+ni exigir sesión. Las acciones de préstamo y cola pertenecen a sus historias.
 
 También acepta uno o varios `authorIds`: con varios, basta con que el libro
 tenga cualquiera de esos autores (OR). Los criterios de título, autor y materia
@@ -22,7 +23,8 @@ libros, ordenadas por nombre e ID. No pagina ni limita esa lista.
     "id": "UUID",
     "title": "Título",
     "authors": [{ "id": "UUID", "name": "Nombre" }],
-    "subjects": [{ "id": "UUID", "name": "Materia" }]
+    "subjects": [{ "id": "UUID", "name": "Materia" }],
+    "availability": { "availableCopies": 2, "totalCopies": 5 }
   }]
 }
 ```
@@ -36,6 +38,20 @@ Cada libro aparece una vez; conserva todos los autores y materias con sus IDs,
 incluidos autores homónimos. Libros, autores y materias se ordenan por título o
 nombre y, como desempate, por ID. Las tarjetas recortan la presentación para no
 desbordarse, pero conservan los metadatos completos recibidos. No abren detalle.
+
+El controlador consulta Circulación una vez por lote para los libros del resultado
+y solo expone los cupos disponibles y totales. No devuelve identidades ni estados
+de préstamos, reservas o esperas. Si falla la disponibilidad o falta un conteo,
+responde 503; no inventa cupos ni entrega una respuesta parcial.
+Al recorrer WAITING en orden, persiste REJECTED_LIMIT y `closed_at` únicamente
+cuando hay capacidad para atender el turno y el usuario tiene cinco préstamos.
+Las esperas elegibles anteriores conservan la prioridad de esa capacidad. No se
+crean reservas ni avisos y no se procesan cierres de vencimientos desde el GET.
+El frontend muestra disponibles/total y grisa las tarjetas sin cupos, conservando
+legibilidad y sin deshabilitar el contenedor. Consulta al entrar, recargar o
+cambiar filtros; no consulta automáticamente ni agrega otro endpoint.
+La acción de cola queda pendiente de SCRUM-23, según el alcance acordado.
+Ver [persistencia y cálculo de disponibilidad](scrum-18-persistencia.md).
 
 ## Organización del backend
 
@@ -101,5 +117,5 @@ orden, incluidos los modelos del equipo, y las consultas del repositorio.
 Sus datos se crean solo en la base aislada de pruebas; no son una
 carga inicial productiva ni una comprobación de la instancia real de Neon.
 
-SCRUM-14/15/16/17 ampliarán los criterios de consulta; SCRUM-18 incorporará
+SCRUM-14/15/16 amplían los criterios de consulta; SCRUM-18 incorpora
 disponibilidad y grisado; SCRUM-20/23 incorporarán las acciones autenticadas.
