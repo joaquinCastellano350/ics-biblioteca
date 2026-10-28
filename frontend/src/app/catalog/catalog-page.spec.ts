@@ -11,6 +11,12 @@ import { vi } from 'vitest';
 import { CatalogPage } from './catalog-page';
 import { appConfig } from '../app.config';
 import type { CatalogTerm } from './book';
+import { providePrimeNG } from 'primeng/config';
+import { AuthService } from '../auth/auth.service';
+import { LoanQueryService } from '../loans/loan-query.service';
+import { LoanDialog } from '../loans/loan-dialog';
+import type { AuthResponse } from '../auth/auth.types';
+import type { PersonalCirculation } from '../loans/loan-query.types';
 
 const subjects: readonly CatalogTerm[] = [
   { id: '11111111-1111-4111-8111-111111111111', name: 'Redes' },
@@ -61,6 +67,239 @@ function expectBooks(http: HttpTestingController) {
 function expectAuthorSearch(http: HttpTestingController, query: string) {
   return http.expectOne((request) => request.url === '/api/authors' && request.params.get('q') === query);
 }
+
+describe('SCRUM-21: circulación personal integrada al catálogo público', () => {
+  let fixture: ComponentFixture<CatalogPage> | undefined;
+  let http: HttpTestingController;
+  let auth: AuthService;
+  const book = { id: '11111111-1111-4111-8111-111111111111', title: 'Redes', authors: [], subjects: [],
+    availability: { availableCopies: 1, totalCopies: 1 } };
+  const session: AuthResponse = {
+    user: { id: 'ana', firstName: 'Ana', lastName: 'Prueba', email: 'ana@example.invalid', university: { id: 'uni', name: 'Universidad' } },
+    session: { createdAt: '2026-10-28T12:00:00Z', expiresAt: '2026-10-28T18:00:00Z' }, serverTime: '2026-10-28T12:00:00Z',
+  };
+  const empty: PersonalCirculation = { serverTime: session.serverTime, loans: [], waits: [], reservations: [],
+    requestConstraints: { activeLoanCount: 0, maxActiveLoans: 5, openQueueBookIds: [] } };
+  const loan = { id: 'loan', book: { id: book.id, title: book.title }, startedAt: session.serverTime, dueAt: '2026-11-17T12:00:00Z' };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), providePrimeNG({ unstyled: true })] });
+    http = TestBed.inject(HttpTestingController);
+    auth = TestBed.inject(AuthService);
+    fixture = undefined;
+  });
+  afterEach(() => {
+    try { http.verify(); }
+    finally { fixture?.destroy(); TestBed.resetTestingModule(); }
+  });
+  async function settle() { fixture!.detectChanges(); await fixture!.whenStable(); fixture!.detectChanges(); }
+  async function mount(authenticated = true) {
+    auth.restore();
+    const restore = http.expectOne('/api/auth/session');
+    if (authenticated) restore.flush(session);
+    else restore.flush({}, { status: 401, statusText: 'Unauthorized' });
+    fixture = TestBed.createComponent(CatalogPage);
+    http.expectOne('/api/books').flush({ books: [book] });
+    http.expectOne('/api/subjects').flush({ subjects: [] });
+    await settle();
+  }
+  async function flushPrivate(data: PersonalCirculation = empty) {
+    http.expectOne('/api/me/circulation').flush(data);
+    await settle();
+  }
+  function root(): HTMLElement { return fixture!.nativeElement; }
+  function requestButton(): HTMLButtonElement { return root().querySelector('app-book-card button')!; }
+
+  it('el visitante conserva el catálogo y abre login sin consultar datos privados', async () => {
+    await mount(false);
+    http.expectNone('/api/me/circulation');
+    expect(root().querySelector('.personal-state')).toBeNull();
+    expect(requestButton().disabled).toBe(false);
+    requestButton().click();
+    expect(auth.loginRequested()).toBe(true);
+    expect(fixture!.componentInstance.requestedBook()).toBeNull();
+    http.expectNone('/api/loans');
+  });
+
+  for (const state of ['loan', 'wait', 'reservation'] as const) {
+    it(`consulta una sola vez y presenta el estado ${state} con bloqueo accesible`, async () => {
+      await mount();
+      expect(requestButton().disabled).toBe(true);
+      expect(root().textContent).toContain('Comprobando tus préstamos');
+      const data: PersonalCirculation = {
+        ...empty,
+        loans: state === 'loan' ? [loan] : [],
+        waits: state === 'wait' ? [{ id: 'wait', book: loan.book, joinedAt: session.serverTime, position: 2 }] : [],
+        reservations: state === 'reservation' ? [{ id: 'reserve', queueEntryId: 'entry', book: loan.book,
+          offeredAt: session.serverTime, expiresAt: '2026-10-29T12:00:00Z' }] : [],
+      };
+      await flushPrivate(data);
+      expect(root().textContent).toContain(state === 'loan' ? 'Lo tenés prestado' : state === 'wait' ? 'En espera' : 'Tu turno llegó');
+      expect(requestButton().disabled).toBe(true);
+      const describedBy = requestButton().getAttribute('aria-describedby');
+      expect(root().querySelector(`[id="${describedBy}"]`)?.textContent?.length).toBeGreaterThan(0);
+      requestButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(fixture!.componentInstance.requestedBook()).toBeNull();
+      http.expectNone('/api/me/circulation');
+      http.expectNone('/api/loans');
+    });
+  }
+
+  it('cinco préstamos bloquean otros libros sin alterar la disponibilidad pública', async () => {
+    await mount();
+    await flushPrivate({ ...empty, loans: Array.from({ length: 5 }, (_, index) => ({ ...loan, id: `loan-${index}`,
+      book: { id: `other-${index}`, title: 'Otro libro' } })),
+      requestConstraints: { activeLoanCount: 5, maxActiveLoans: 5, openQueueBookIds: [] } });
+    expect(root().textContent).toContain('Tenés cinco préstamos activos');
+    expect(root().querySelector('.availability')?.textContent).toContain('1/1');
+    expect(requestButton().disabled).toBe(true);
+  });
+
+  it('una entrada OFFERED pendiente bloquea hasta que una actualización confirme su cierre', async () => {
+    await mount();
+    await flushPrivate({ ...empty, requestConstraints: { ...empty.requestConstraints, openQueueBookIds: [book.id] } });
+    expect(root().querySelector('.personal-state')?.textContent).toContain('Conciliación pendiente');
+    expect(root().querySelector('.personal-state')?.textContent).not.toContain('Tu turno llegó');
+    expect(requestButton().disabled).toBe(true);
+    const description = requestButton().getAttribute('aria-describedby');
+    expect(root().querySelector(`[id="${description}"]`)?.textContent).toBe('Tu entrada en cola sigue abierta. Actualizá para comprobar su estado');
+    requestButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture!.componentInstance.requestLoan(book);
+    expect(fixture!.componentInstance.requestedBook()).toBeNull();
+    http.expectNone('/api/loans');
+    const update = Array.from(root().querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Actualizar disponibilidad y préstamos'))!;
+    update.click();
+    http.expectOne('/api/books').flush({ books: [book] });
+    await flushPrivate();
+    expect(root().querySelector('.personal-state')).toBeNull();
+    expect(requestButton().disabled).toBe(false);
+    requestButton().click();
+    expect(fixture!.componentInstance.requestedBook()?.id).toBe(book.id);
+  });
+
+  it('un error conserva el catálogo, permite reintentar y no finge que no hay préstamos', async () => {
+    await mount();
+    http.expectOne('/api/me/circulation').flush({}, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(root().querySelector('p-message')?.textContent).toContain('No pudimos comprobar tus préstamos. Reintentá para continuar');
+    expect(root().querySelectorAll('article.book-card').length).toBe(1);
+    expect(root().querySelector('.availability')?.textContent).toContain('1/1');
+    expect(requestButton().disabled).toBe(true);
+    const description = requestButton().getAttribute('aria-describedby');
+    expect(root().querySelector(`[id="${description}"]`)?.textContent).toBe('No pudimos comprobar tus préstamos. Reintentá para continuar');
+    requestButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture!.componentInstance.requestLoan(book);
+    expect(fixture!.componentInstance.requestedBook()).toBeNull();
+    http.expectNone('/api/loans');
+    const retry = Array.from(root().querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.includes('Reintentar consulta personal'))!;
+    retry.click();
+    await settle();
+    expect(requestButton().disabled).toBe(true);
+    http.expectOne('/api/books').flush({ books: [book] });
+    await flushPrivate();
+    expect(root().querySelector('p-message')).toBeNull();
+    expect(requestButton().disabled).toBe(false);
+    requestButton().click();
+    expect(fixture!.componentInstance.requestedBook()?.id).toBe(book.id);
+  });
+
+  it('un error personal no bloquea al visitante después del logout', async () => {
+    await mount();
+    http.expectOne('/api/me/circulation').flush({}, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(requestButton().disabled).toBe(true);
+    auth.logout().subscribe();
+    http.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+    expect(root().querySelector('p-message')).toBeNull();
+    expect(requestButton().disabled).toBe(false);
+    http.expectNone('/api/me/circulation');
+    requestButton().click();
+    expect(auth.loginRequested()).toBe(true);
+    expect(fixture!.componentInstance.requestedBook()).toBeNull();
+  });
+
+  it('una cuenta nueva no hereda el error ni el bloqueo de la cuenta anterior', async () => {
+    await mount();
+    http.expectOne('/api/me/circulation').flush({}, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(requestButton().disabled).toBe(true);
+    auth.restore();
+    http.expectOne('/api/auth/session').flush({ ...session, user: { ...session.user, id: 'bea' } });
+    await settle();
+    expect(root().querySelector('p-message')).toBeNull();
+    expect(requestButton().disabled).toBe(true);
+    expect(root().textContent).toContain('Comprobando tus préstamos');
+    await flushPrivate();
+    expect(requestButton().disabled).toBe(false);
+    expect(root().textContent).not.toContain('No pudimos comprobar tus préstamos');
+  });
+
+  it('cambiar filtros no repite la consulta personal y el éxito actualiza sin duplicar POST', async () => {
+    await mount();
+    await flushPrivate();
+    fixture!.componentInstance.searchByTitle('Redes', true);
+    const filtered = http.expectOne(request => request.url === '/api/books');
+    expect(filtered.request.params.get('title')).toBe('Redes');
+    filtered.flush({ books: [book] });
+    await settle();
+    http.expectNone('/api/me/circulation');
+    requestButton().click();
+    await settle();
+    const dialog: LoanDialog = fixture!.debugElement.query(By.directive(LoanDialog)).componentInstance;
+    dialog.confirm(); dialog.confirm();
+    const post = http.expectOne('/api/loans');
+    expect(post.request.method).toBe('POST');
+    post.flush({ loan: { id: loan.id, bookId: book.id, startedAt: loan.startedAt, dueAt: loan.dueAt } }, { status: 201, statusText: 'Created' });
+    await flushPrivate({ ...empty, loans: [loan], requestConstraints: { ...empty.requestConstraints, activeLoanCount: 1 } });
+    expect(root().textContent).toContain('Lo tenés prestado');
+    dialog.confirm();
+    http.expectNone('/api/loans');
+    dialog.close();
+    const refreshed = http.expectOne(request => request.url === '/api/books');
+    expect(refreshed.request.params.get('title')).toBe('Redes');
+    refreshed.flush({ books: [{ ...book, availability: { availableCopies: 0, totalCopies: 1 } }] });
+    await settle();
+    expect(fixture!.componentInstance.titleQuery()).toBe('Redes');
+    expect(requestButton().disabled).toBe(true);
+    http.expectNone('/api/me/circulation');
+  });
+
+  it('logout retira los estados privados y permite al visitante volver a iniciar sesión', async () => {
+    await mount(); await flushPrivate({ ...empty, loans: [loan] });
+    auth.logout().subscribe();
+    http.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+    expect(root().querySelector('.personal-state')).toBeNull();
+    expect(requestButton().disabled).toBe(false);
+    http.expectNone('/api/me/circulation');
+    requestButton().click();
+    expect(auth.loginRequested()).toBe(true);
+  });
+
+  it('cambiar de cuenta cancela respuestas viejas antes de mostrar la nueva fotografía', async () => {
+    await mount();
+    const old = http.expectOne('/api/me/circulation');
+    auth.restore();
+    http.expectOne('/api/auth/session').flush({ ...session, user: { ...session.user, id: 'bea' } });
+    await settle();
+    expect(old.cancelled).toBe(true);
+    expect(() => old.flush({ ...empty, loans: [loan] })).toThrow();
+    await flushPrivate();
+    expect(root().textContent).not.toContain('Lo tenés prestado');
+  });
+
+  it('eventos de foco agrupados refrescan información pública y personal una sola vez', async () => {
+    await mount(); await flushPrivate();
+    window.dispatchEvent(new Event('focus'));
+    window.dispatchEvent(new Event('focus'));
+    http.expectOne('/api/auth/session').flush(session);
+    http.expectOne('/api/books').flush({ books: [book] });
+    await flushPrivate();
+    expect(root().querySelectorAll('article.book-card').length).toBe(1);
+  });
+});
 
 function selectRoot(fixture: ReturnType<typeof createCatalogFixture>['fixture']): HTMLElement {
   const root = fixture.nativeElement.querySelector('.p-select');

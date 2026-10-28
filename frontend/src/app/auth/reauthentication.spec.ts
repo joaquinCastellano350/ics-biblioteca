@@ -9,8 +9,9 @@ import { appConfig } from '../app.config';
 import { routes } from '../app.routes';
 import { AuthService } from './auth.service';
 import type { AuthResponse } from './auth.types';
+import type { PersonalCirculation } from '../loans/loan-query.types';
 
-// La acción existe solo en la prueba: circulación todavía no forma parte del catálogo.
+// Esta acción protegida es un endpoint ficticio exclusivo de la prueba.
 @Component({
   imports: [App, ButtonModule],
   template: `<app-root /><button pButton type="button" (click)="attempt()">Acción protegida de prueba</button>`,
@@ -37,6 +38,15 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
   let http: HttpTestingController;
   let router: Router;
   let root: HTMLElement;
+  const catalogBook = { availability: { availableCopies: 1, totalCopies: 1 }, id: 'algebra', title: 'Álgebra', authors: [], subjects: [] };
+  function personal(serverTime: string): PersonalCirculation {
+    return { serverTime,
+      loans: [{ id: 'loan-estudiante', book: { id: catalogBook.id, title: catalogBook.title },
+        startedAt: session.serverTime, dueAt: '2026-11-14T12:00:00Z' }],
+      waits: [], reservations: [],
+      requestConstraints: { activeLoanCount: 1, maxActiveLoans: 5, openQueueBookIds: [] },
+    };
+  }
 
   beforeEach(async () => {
     HTMLElement.prototype.scrollIntoView ??= () => undefined;
@@ -54,6 +64,10 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
     http.expectOne('/api/books').flush({ books: [] });
     http.expectOne('/api/subjects').flush({ subjects: [] });
     await fixture.whenStable();
+    const initialPersonal = http.expectOne('/api/me/circulation');
+    expect(initialPersonal.request.method).toBe('GET');
+    initialPersonal.flush(personal(session.serverTime));
+    await fixture.whenStable();
     root.querySelector<HTMLElement>('.p-select-label')!.click();
     fixture.detectChanges();
     const authorSearch = root.querySelector<HTMLInputElement>('p-select input[aria-label="Buscar autores"]')!;
@@ -67,14 +81,19 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
     root.querySelector<HTMLButtonElement>('.filter-done')!.click();
     const filtered = http.expectOne(request => request.url === '/api/books');
     expect(filtered.request.params.getAll('authorIds')).toEqual(['autora']);
-    filtered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'algebra', title: 'Álgebra', authors: [], subjects: [] }] });
+    filtered.flush({ books: [catalogBook] });
     await fixture.whenStable();
+    expect(root.querySelector('.personal-state')?.textContent).toContain('Lo tenés prestado');
+    http.expectNone('/api/me/circulation');
     await vi.waitFor(() => expect(document.activeElement).toBe(root.querySelector('.p-select-label')));
   });
   afterEach(() => {
-    http.verify();
-    fixture.destroy();
-    vi.restoreAllMocks();
+    try { http?.verify(); }
+    finally {
+      fixture?.destroy();
+      TestBed.resetTestingModule();
+      vi.restoreAllMocks();
+    }
   });
 
   for (const expiry of ['local', 'servidor', 'servidor tras vencimiento local']) {
@@ -94,11 +113,16 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
           const now = performance.now();
           vi.spyOn(performance, 'now').mockReturnValue(now + 6 * 60 * 60 * 1000);
           window.dispatchEvent(new Event('focus'));
+          const refreshed = http.expectOne(request => request.url === '/api/books');
+          expect(refreshed.request.params.getAll('authorIds')).toEqual(['autora']);
+          refreshed.flush({ books: [catalogBook] });
         }
         pending.flush({ error: { code: 'AUTH_REQUIRED' } }, { status: 401, statusText: 'Unauthorized' });
       }
       await fixture.whenStable();
       expect(root.querySelector('.account-name')).toBeNull();
+      expect(root.querySelector('.personal-state')).toBeNull();
+      http.expectNone('/api/me/circulation');
       expect(root.querySelectorAll('[role="dialog"]')).toHaveLength(1);
       http.expectNone('/api/test-action');
       expect(root.querySelector('article')).toBe(book);
@@ -109,6 +133,7 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
       await fixture.whenStable();
       expect(document.activeElement).toBe(opener);
       expect(fixture.componentInstance.completed).toBe(0);
+      http.expectNone('/api/me/circulation');
       opener.click();
       await fixture.whenStable();
       const email = root.querySelector<HTMLInputElement>('#login-email')!;
@@ -121,8 +146,13 @@ describe('SCRUM-11: reautenticación en la página abierta', () => {
         serverTime: '2026-10-25T18:00:00Z',
       });
       await fixture.whenStable();
+      const renewedPersonal = http.expectOne('/api/me/circulation');
+      expect(renewedPersonal.request.method).toBe('GET');
+      renewedPersonal.flush(personal('2026-10-25T18:00:00Z'));
+      await fixture.whenStable();
       expect(root.querySelector('[role="dialog"]')).toBeNull();
       expect(root.querySelector('.account-name')?.textContent).toContain('Hola, Ana');
+      expect(root.querySelector('.personal-state')?.textContent).toContain('Lo tenés prestado');
       expect(root.querySelector('article')).toBe(book);
       expect(root.querySelector('.chip')).toBe(filter);
       expect(router.url).toBe('/catalogo?q=algebra#resultados');

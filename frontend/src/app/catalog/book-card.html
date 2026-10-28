@@ -34,9 +34,16 @@
         <p class="availability-note">Sin cupos disponibles</p>
       }
     </div>
-    @if (book().availability.availableCopies > 0) {
-      <p-button styleClass="request-loan" label="Solicitar préstamo" [fluid]="true"
-        [ariaLabel]="'Solicitar préstamo de ' + book().title" (onClick)="requestLoan.emit(book())" />
+    @if (personal(); as state) {
+      <div class="personal-state">
+        <p-tag [severity]="state.checking ? 'secondary' : 'info'" [value]="state.label" />
+        @if (state.detail) { <p>{{ state.detail }}</p> }
+      </div>
     }
+    <p-button styleClass="request-loan" label="Solicitar préstamo" [fluid]="true" type="button"
+      [disabled]="!!disabledReason()" [loading]="personal()?.checking ?? false"
+      [ariaLabel]="'Solicitar préstamo de ' + book().title" (onClick)="request()"
+      [pt]="{ root: { 'aria-describedby': disabledReason() ? 'loan-reason-' + book().id : undefined } }" />
+    @if (disabledReason()) { <p class="request-reason" [id]="'loan-reason-' + book().id">{{ disabledReason() }}</p> }
   </p-card>
 </article>

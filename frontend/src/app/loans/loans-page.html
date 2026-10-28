@@ -5,8 +5,8 @@
     <p class="intro">Tu biblioteca te acompaña, donde estés.</p>
   </header>
 
-  <section class="private-state" aria-labelledby="loans-state-title"
-    [attr.aria-busy]="auth.status() === 'loading'">
+  <section [class.private-state]="auth.status() !== 'authenticated'" aria-labelledby="loans-state-title"
+    [attr.aria-busy]="auth.status() === 'loading' || loading() || auth.authenticating()">
     @switch (auth.status()) {
       @case ('loading') {
         <p-progress-spinner ariaLabel="Comprobando sesión" [style]="{ width: '32px', height: '32px' }" />
@@ -30,10 +30,67 @@
         <a pButton variant="outlined" routerLink="/catalogo">Explorar catálogo</a>
       }
       @case ('authenticated') {
-        <span class="state-symbol" aria-hidden="true"><i class="pi pi-book"></i></span>
-        <h2 id="loans-state-title">Tus lecturas, en un solo lugar</h2>
-        <p>Estamos preparando esta sección. Pronto vas a poder consultar tus préstamos activos desde acá.</p>
-        <a pButton routerLink="/catalogo">Explorar catálogo <i class="pi pi-arrow-right" aria-hidden="true"></i></a>
+        <div class="content-section-header">
+          <h2 id="loans-state-title">Tus lecturas, en un solo lugar</h2>
+          <p-button label="Actualizar" variant="outlined" type="button" (onClick)="load()"
+            [loading]="loading()" [disabled]="loading() || auth.authenticating()" />
+        </div>
+        @if (loading() || auth.authenticating()) {
+          <div class="query-loading" role="status">
+            <p-progress-spinner ariaLabel="Cargando préstamos y esperas" [style]="{ width: '32px', height: '32px' }" />
+            <p>Cargando tus préstamos y esperas…</p>
+          </div>
+        } @else if (error()) {
+          <div class="query-error">
+            <p-message severity="error">{{ error() }}</p-message>
+            <p-button label="Reintentar" type="button" (onClick)="load()" />
+          </div>
+        } @else if (data(); as circulation) {
+          <section class="ready-section" aria-labelledby="reservations-title">
+            <h2 id="reservations-title">Tu turno llegó</h2>
+            @for (reservation of reservations(); track reservation.id) {
+              <article class="reserve-row">
+                <div>
+                  <h3>{{ reservation.book.title }}</h3>
+                  <p>Aceptá tu reserva antes del <time [attr.datetime]="reservation.expiresAt">{{ date(reservation.expiresAt) }}</time>.</p>
+                  <p class="remaining">Tiempo restante: {{ remaining(reservation.expiresAt) }}</p>
+                </div>
+                <p-tag severity="success" value="Cupo reservado" />
+              </article>
+            } @empty {
+              <p class="empty-state">No tenés reservas disponibles para aceptar.</p>
+            }
+          </section>
+          <div class="loans-columns">
+            <section aria-labelledby="active-loans-title">
+              <h2 id="active-loans-title">Préstamos activos</h2>
+              @for (loan of loans(); track loan.id) {
+                <article class="loan-card">
+                  <h3>{{ loan.book.title }}</h3>
+                  <p-tag severity="success" value="Préstamo vigente" />
+                  <p>Vence el <time [attr.datetime]="loan.dueAt">{{ date(loan.dueAt) }}</time></p>
+                  <p class="remaining">Tiempo restante: {{ remaining(loan.dueAt) }}</p>
+                </article>
+              } @empty {
+                <p class="empty-state">No tenés préstamos activos.</p>
+              }
+            </section>
+            <section class="waiting-panel" aria-labelledby="waits-title">
+              <h2 id="waits-title">Libros que estás esperando</h2>
+              @for (wait of circulation.waits; track wait.id) {
+                <article class="waiting-item">
+                  <h3>{{ wait.book.title }}</h3>
+                  <p>Tu posición en cola: <strong>{{ wait.position }}</strong></p>
+                </article>
+              } @empty {
+                <p class="empty-state">No estás esperando ningún libro.</p>
+              }
+              <p class="reading-note">Las posiciones reflejan la cola registrada y pueden cambiar al procesarse los turnos.</p>
+            </section>
+          </div>
+          <p class="reading-note">Las fechas se muestran en tu zona horaria. Los plazos restantes toman como referencia el reloj del servidor.</p>
+          <a pButton routerLink="/catalogo" variant="text">Explorar catálogo</a>
+        }
       }
     }
   </section>

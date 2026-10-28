@@ -7,6 +7,7 @@ import { App } from './app';
 import { routes } from './app.routes';
 import { AuthService } from './auth/auth.service';
 import type { AuthResponse } from './auth/auth.types';
+import type { PersonalCirculation } from './loans/loan-query.types';
 
 describe('App: cierre de sesión sin API real', () => {
   let fixture: ComponentFixture<App>;
@@ -37,7 +38,7 @@ describe('App: cierre de sesión sin API real', () => {
   afterEach(() => {
     try { http.verify(); }
     finally {
-      fixture.destroy();
+      fixture?.destroy();
       TestBed.resetTestingModule();
     }
   });
@@ -117,6 +118,24 @@ describe('App: cierre de sesión sin API real', () => {
 
   it('en /prestamos vuelve a pedir autenticación sin redirigir ni modificar la página', async () => {
     await navigate('/prestamos');
+    const circulation: PersonalCirculation = {
+      serverTime: response.serverTime,
+      loans: [{ id: 'loan', book: { id: 'loan-book', title: 'Préstamo privado de Ana' },
+        startedAt: response.serverTime, dueAt: '2026-11-13T12:00:00Z' }],
+      waits: [{ id: 'wait', book: { id: 'wait-book', title: 'Espera privada de Ana' },
+        joinedAt: response.serverTime, position: 2 }],
+      reservations: [{ id: 'reservation', queueEntryId: 'offered-entry',
+        book: { id: 'reserved-book', title: 'Reserva privada de Ana' },
+        offeredAt: response.serverTime, expiresAt: '2026-10-25T12:00:00Z' }],
+      requestConstraints: { activeLoanCount: 1, maxActiveLoans: 5, openQueueBookIds: ['wait-book', 'reserved-book'] },
+    };
+    const request = http.expectOne('/api/me/circulation');
+    expect(request.request.method).toBe('GET');
+    request.flush(circulation);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const privateTitles = ['Préstamo privado de Ana', 'Espera privada de Ana', 'Reserva privada de Ana'];
+    for (const title of privateTitles) expect(root().textContent).toContain(title);
     expect(root().textContent).toContain('Tus lecturas, en un solo lugar');
     logoutButton()!.click();
     confirmLogout();
@@ -125,6 +144,9 @@ describe('App: cierre de sesión sin API real', () => {
     expect(router.url).toBe('/prestamos');
     expect(root().textContent).toContain('Ingresá a tu cuenta para acceder a la sección de préstamos.');
     expect(root().textContent).not.toContain('Tus lecturas, en un solo lugar');
+    for (const title of privateTitles) expect(root().textContent).not.toContain(title);
+    expect(root().querySelector('app-loans-page article')).toBeNull();
+    http.expectNone('/api/me/circulation');
     const login = Array.from(root().querySelectorAll<HTMLButtonElement>('app-loans-page button'))
       .find((button) => button.textContent?.includes('Ingresar a mi cuenta'))!;
     login.click();
@@ -134,13 +156,28 @@ describe('App: cierre de sesión sin API real', () => {
 
   it('conserva los libros y el carácter público del catálogo después del logout', async () => {
     await navigate('/catalogo');
+    const personal: PersonalCirculation = {
+      serverTime: response.serverTime,
+      loans: [{ id: 'loan-catalog', book: { id: books[0].id, title: books[0].title },
+        startedAt: response.serverTime, dueAt: '2026-11-13T12:00:00Z' }],
+      waits: [], reservations: [],
+      requestConstraints: { activeLoanCount: 1, maxActiveLoans: 5, openQueueBookIds: [] },
+    };
+    const personalRequest = http.expectOne('/api/me/circulation');
+    expect(personalRequest.request.method).toBe('GET');
+    personalRequest.flush(personal);
+    await fixture.whenStable();
+    fixture.detectChanges();
     const catalog = root().querySelector('app-catalog-page');
     expect(catalog?.querySelectorAll('article').length).toBe(2);
+    expect(catalog?.querySelector('.personal-state')?.textContent).toContain('Lo tenés prestado');
     logoutButton()!.click();
     confirmLogout();
     await fixture.whenStable();
     expect(router.url).toBe('/catalogo');
     expect(root().querySelector('app-catalog-page')).toBe(catalog);
+    expect(catalog?.querySelector('.personal-state')).toBeNull();
+    http.expectNone('/api/me/circulation');
     for (const book of books) expect(catalog?.textContent).toContain(book.title);
     http.expectNone('/api/books');
     await navigate('/');
@@ -155,5 +192,6 @@ describe('App: cierre de sesión sin API real', () => {
     fixture.detectChanges();
     expect(root().querySelectorAll('app-catalog-page article').length).toBe(2);
     http.expectNone('/api/auth/session');
+    http.expectNone('/api/me/circulation');
   });
 });
