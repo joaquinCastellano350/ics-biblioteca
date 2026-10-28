@@ -1,7 +1,7 @@
 import { createApp } from './app.js';
 import { checkDatabase, database } from './database.js';
 import { serverPort } from './env.js';
-import { checkStorage, storage } from './storage.js';
+import { checkStorage, storage, storageBucket } from './storage.js';
 import { AccountsService } from './accounts/accounts.service.js';
 import { PrismaAccountsRepository } from './accounts/prisma-accounts.repository.js';
 import { RegistrationService } from './accounts/registration.service.js';
@@ -11,6 +11,8 @@ import { SubjectRepository } from './subject/subject-repository.js';
 import { CirculationRepository } from './circulation/circulation-repository.js';
 import { LoanRepository } from './circulation/loan-repository.js';
 import { CirculationQueryRepository } from './circulation/circulation-query-repository.js';
+import { LoanReadingRepository } from './loan/loan-repository.js';
+import { S3PdfAccessSigner } from './loan/pdf-access.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +28,8 @@ const server = createApp({
   circulation: new CirculationRepository(database),
   loans: new LoanRepository(database),
   circulationQueries: new CirculationQueryRepository(database),
+  loanReading: new LoanReadingRepository(database),
+  pdfAccess: new S3PdfAccessSigner(storage, storageBucket),
   subjects: new SubjectRepository(database),
   ...(production && existsSync(join(frontendDirectory, 'index.html')) ? { frontendDirectory } : {}),
 }).listen(port, () => { console.log(`API disponible en el puerto ${port}.`); });
