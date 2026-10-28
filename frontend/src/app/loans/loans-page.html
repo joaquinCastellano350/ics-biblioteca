@@ -70,6 +70,7 @@
                   <p-tag severity="success" value="Préstamo vigente" />
                   <p>Vence el <time [attr.datetime]="loan.dueAt">{{ date(loan.dueAt) }}</time></p>
                   <p class="remaining">Tiempo restante: {{ remaining(loan.dueAt) }}</p>
+                  <app-read-book-button [loanId]="loan.id" (unavailable)="load()" />
                 </article>
               } @empty {
                 <p class="empty-state">No tenés préstamos activos.</p>

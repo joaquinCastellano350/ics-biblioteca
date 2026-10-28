@@ -4,7 +4,7 @@ const bookId = '11111111-1111-4111-8111-111111111111';
 const loanId = '22222222-2222-4222-8222-222222222222';
 const book = { id: bookId, title: 'Lectura de prueba', authors: [], subjects: [], availability: { availableCopies: 1, totalCopies: 1 } };
 
-test('lee desde la confirmación y desde el catálogo, conserva el acceso al recargar y lo retira al salir', async ({ page, context }, testInfo) => {
+test('lee desde confirmación, catálogo y Mis préstamos; conserva el acceso al recargar y lo retira al salir', async ({ page, context }, testInfo) => {
   const now = new Date();
   const session = { user: { id: 'ana', firstName: 'Ana', lastName: 'Prueba', email: 'ana@example.org', university: { id: 'uni', name: 'Universidad' } },
     session: { createdAt: now.toISOString(), expiresAt: new Date(+now + 6 * 3_600_000).toISOString() }, serverTime: now.toISOString() };
@@ -21,7 +21,11 @@ test('lee desde la confirmación y desde el catálogo, conserva el acceso al rec
     if (path === '/api/auth/logout') { authenticated = false; return route.fulfill({ status: 204 }); }
     if (path === '/api/books') return route.fulfill({ json: { books: [{ ...book, availability: { availableCopies: granted ? 0 : 1, totalCopies: 1 } }] } });
     if (path === '/api/subjects') return route.fulfill({ json: { subjects: [] } });
-    if (path === '/api/loans/readable') return route.fulfill({ json: { ownerId: 'ana', serverTime: new Date().toISOString(), loans: granted ? [loan] : [] } });
+    if (path === '/api/me/circulation') return route.fulfill({ json: {
+      serverTime: new Date().toISOString(),
+      loans: granted ? [{ id: loan.id, book: { id: bookId, title: book.title }, startedAt: loan.startedAt, dueAt: loan.dueAt }] : [],
+      waits: [], reservations: [], requestConstraints: { activeLoanCount: granted ? 1 : 0, maxActiveLoans: 5, openQueueBookIds: [] },
+    } });
     if (path === '/api/loans') { grants++; granted = true; return route.fulfill({ status: 201, json: { loan } }); }
     if (path === `/api/loans/${loanId}/read-access`) {
       reads++;
@@ -57,9 +61,21 @@ test('lee desde la confirmación y desde el catálogo, conserva el acceso al rec
   const second = await secondReady;
   await second.waitForURL('https://assets.example.org/**');
   await second.close();
-  expect(reads).toBe(2);
+  await page.goto('/prestamos');
+  const personalRead = page.locator('.loan-card').getByRole('button', { name: 'Leer online (abre una pestaña nueva)', exact: true });
+  await expect(personalRead).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('leer-mis-prestamos.png'), fullPage: true });
+  const thirdReady = page.waitForEvent('popup');
+  await personalRead.click();
+  const third = await thirdReady;
+  await third.waitForURL('https://assets.example.org/**');
+  expect(await third.evaluate(() => window.opener === null)).toBe(true);
+  await third.close();
+  expect(reads).toBe(3);
   expect(grants).toBe(1);
   await page.bringToFront();
   await page.getByRole('button', { name: 'Cerrar sesión', exact: true }).click();
-  await expect(read).toHaveCount(0);
+  await expect(personalRead).toHaveCount(0);
+  await expect(page.getByText('Ingresá a tu cuenta para acceder a la sección de préstamos.')).toBeVisible();
 });

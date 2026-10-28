@@ -43,11 +43,11 @@
     @if (loanId(); as readableLoanId) {
       <app-read-book-button [loanId]="readableLoanId" (unavailable)="readingUnavailable.emit()" />
     } @else {
-    <p-button styleClass="request-loan" label="Solicitar préstamo" [fluid]="true" type="button"
-      [disabled]="!!disabledReason()" [loading]="personal()?.checking ?? false"
-      [ariaLabel]="'Solicitar préstamo de ' + book().title" (onClick)="request()"
-      [pt]="{ root: { 'aria-describedby': disabledReason() ? 'loan-reason-' + book().id : undefined } }" />
-    @if (disabledReason()) { <p class="request-reason" [id]="'loan-reason-' + book().id">{{ disabledReason() }}</p> }
+      <p-button styleClass="request-loan" label="Solicitar préstamo" [fluid]="true" type="button"
+        [disabled]="!!disabledReason()" [loading]="personal()?.checking ?? false"
+        [ariaLabel]="'Solicitar préstamo de ' + book().title" (onClick)="request()"
+        [pt]="{ root: { 'aria-describedby': disabledReason() ? 'loan-reason-' + book().id : undefined } }" />
+      @if (disabledReason()) { <p class="request-reason" [id]="'loan-reason-' + book().id">{{ disabledReason() }}</p> }
     }
   </p-card>
 </article>
