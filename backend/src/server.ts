@@ -9,6 +9,7 @@ import { PostgresRegistrationRepository } from './accounts/registration.reposito
 import { BookRepository } from './book/book-repository.js';
 import { SubjectRepository } from './subject/subject-repository.js';
 import { CirculationRepository } from './circulation/circulation-repository.js';
+import { LoanRepository } from './circulation/loan-repository.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +23,7 @@ const server = createApp({
   registrationService: new RegistrationService(new PostgresRegistrationRepository(database)),
   books: new BookRepository(database),
   circulation: new CirculationRepository(database),
+  loans: new LoanRepository(database),
   subjects: new SubjectRepository(database),
   ...(production && existsSync(join(frontendDirectory, 'index.html')) ? { frontendDirectory } : {}),
 }).listen(port, () => { console.log(`API disponible en el puerto ${port}.`); });

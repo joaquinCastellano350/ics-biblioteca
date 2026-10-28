@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import type { BookOccupancy } from './circulation.js';
 import type { CirculationRepositoryInterface } from './circulation-repository-interface.js';
 
-function retryable(error: unknown): boolean {
+export function retryable(error: unknown): boolean {
   const pending: unknown[] = [error];
   const seen = new Set<object>();
   while (pending.length) {
@@ -34,14 +34,14 @@ export class CirculationRepository implements CirculationRepositoryInterface {
     }
   }
 
-  private async findOccupancyInTransaction(transaction: Prisma.TransactionClient, ids: readonly string[]): Promise<readonly BookOccupancy[]> {
+  async findOccupancyInTransaction(transaction: Prisma.TransactionClient, ids: readonly string[], now?: Date): Promise<readonly BookOccupancy[]> {
     // Prisma no expone FOR UPDATE. El bloqueo coordina el rechazo persistido;
     // las lecturas de entidades y la actualización de la entrada usan el ORM.
     await transaction.$queryRaw(Prisma.sql`
       SELECT id FROM books WHERE id IN (${Prisma.join(ids.map(id => Prisma.sql`${id}::uuid`))})
       ORDER BY id FOR UPDATE
     `);
-    const [clock] = await transaction.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
+    const [clock] = now ? [{ now }] : await transaction.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
     if (!clock || !Number.isFinite(clock.now.getTime())) throw new Error('No se pudo obtener la hora de PostgreSQL.');
     const activeLoan: Prisma.LoanWhereInput = {
       closedAt: null, startedAt: { lte: clock.now }, dueAt: { gt: clock.now },
