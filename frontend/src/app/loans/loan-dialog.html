@@ -1,0 +1,29 @@
+<p-dialog [visible]="book() !== null" (visibleChange)="!$event && close()" (onHide)="restoreFocus()" [modal]="true"
+  [header]="loan() ? 'Tu préstamo está confirmado' : 'Confirmá tu préstamo'"
+  [style]="{ width: '470px', maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100dvh - 42px)' }"
+  [draggable]="false" [resizable]="false" [closable]="!pending()" [closeOnEscape]="!pending()"
+  closeAriaLabel="Cerrar solicitud de préstamo">
+  <p class="book-title">{{ book()?.title }}</p>
+  @if (loan()) {
+    <p-message severity="success">Tu préstamo está confirmado.</p-message>
+    <p class="due-date">Vence el <strong>{{ dueDate() }}</strong>, en tu horario local.</p>
+    <p-button label="Listo" [fluid]="true" (onClick)="close()" />
+  } @else {
+    <p>Vas a tener el libro en préstamo durante <strong>20 días (480 horas)</strong> desde la confirmación.</p>
+    <p class="muted">Podés tener hasta cinco préstamos activos. El cupo se comprueba al confirmar.</p>
+    @if (error()) { <p-message severity="warn">{{ error() }}</p-message> }
+    @if (queueInfo()) {
+      <p-message severity="info">La inscripción en la cola estará disponible próximamente. Podés volver al catálogo para consultar los cupos.</p-message>
+    }
+    <div class="actions">
+      @if (noCopies() && !queueInfo()) {
+        <p-button label="Entrar en la cola" [fluid]="true" (onClick)="queueInfo.set(true)" />
+      } @else if (!terminal()) {
+        <p-button [label]="pending() ? 'Confirmando…' : 'Confirmar préstamo'" [loading]="pending()"
+          [disabled]="pending()" [fluid]="true" (onClick)="confirm()" />
+      }
+      <p-button [label]="terminal() ? 'Volver al catálogo' : 'Cancelar'" severity="secondary"
+        variant="text" [disabled]="pending()" [fluid]="true" (onClick)="close()" />
+    </div>
+  }
+</p-dialog>

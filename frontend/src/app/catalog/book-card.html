@@ -34,5 +34,9 @@
         <p class="availability-note">Sin cupos disponibles</p>
       }
     </div>
+    @if (book().availability.availableCopies > 0) {
+      <p-button styleClass="request-loan" label="Solicitar préstamo" [fluid]="true"
+        [ariaLabel]="'Solicitar préstamo de ' + book().title" (onClick)="requestLoan.emit(book())" />
+    }
   </p-card>
 </article>

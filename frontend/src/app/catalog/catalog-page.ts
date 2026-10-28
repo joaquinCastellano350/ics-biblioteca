@@ -13,10 +13,12 @@ import { InputTextModule } from 'primeng/inputtext';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
 import { EMPTY, Subject, catchError, of, switchMap, timer } from 'rxjs';
+import { AuthService } from '../auth/auth.service';
+import { LoanDialog } from '../loans/loan-dialog';
 
 @Component({
   selector: 'app-catalog-page',
-  imports: [BookCard, ButtonModule, CheckboxModule, ProgressSpinnerModule, SelectModule, FormsModule, InputTextModule, IconFieldModule, InputIconModule],
+  imports: [BookCard, LoanDialog, ButtonModule, CheckboxModule, ProgressSpinnerModule, SelectModule, FormsModule, InputTextModule, IconFieldModule, InputIconModule],
   templateUrl: './catalog-page.html',
   styleUrl: './catalog-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -25,6 +27,22 @@ export class CatalogPage {
   @ViewChild('authorSelect') private authorSelect?: Select;
   @ViewChild('subjectSelect') private subjectSelect?: Select;
   private readonly catalog = inject(CatalogService);
+  private readonly auth = inject(AuthService);
+  readonly requestedBook = signal<Book | null>(null);
+
+  requestLoan(book: Book): void {
+    if (this.auth.ensureAuthenticated()) this.requestedBook.set(book);
+  }
+
+  closeLoanDialog(): void {
+    this.requestedBook.set(null);
+    // Recargar también tras un conflicto de cupos, conservando los filtros.
+    // Conserva las tarjetas para devolver el foco al botón que abrió el modal.
+    const criteria = this.criteria;
+    this.catalog.findAll(criteria).pipe(
+      takeUntilDestroyed(this.destroyRef), catchError(() => EMPTY),
+    ).subscribe(({ books }) => { if (criteria === this.criteria) this.books.set(books); });
+  }
   private readonly subjectService = inject(SubjectService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly host = inject(ElementRef<HTMLElement>);
