@@ -155,14 +155,27 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
     expect(requestButton().disabled).toBe(true);
   });
 
-  it('una entrada ambigua no bloquea permanentemente un libro sin reserva vigente', async () => {
+  it('una entrada OFFERED pendiente bloquea hasta que una actualización confirme su cierre', async () => {
     await mount();
     await flushPrivate({ ...empty, requestConstraints: { ...empty.requestConstraints, openQueueBookIds: [book.id] } });
+    expect(root().querySelector('.personal-state')?.textContent).toContain('Conciliación pendiente');
+    expect(root().querySelector('.personal-state')?.textContent).not.toContain('Tu turno llegó');
+    expect(requestButton().disabled).toBe(true);
+    const description = requestButton().getAttribute('aria-describedby');
+    expect(root().querySelector(`[id="${description}"]`)?.textContent).toBe('Tu entrada en cola sigue abierta. Actualizá para comprobar su estado');
+    requestButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture!.componentInstance.requestLoan(book);
+    expect(fixture!.componentInstance.requestedBook()).toBeNull();
+    http.expectNone('/api/loans');
+    const update = Array.from(root().querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Actualizar disponibilidad y préstamos'))!;
+    update.click();
+    http.expectOne('/api/books').flush({ books: [book] });
+    await flushPrivate();
     expect(root().querySelector('.personal-state')).toBeNull();
     expect(requestButton().disabled).toBe(false);
     requestButton().click();
     expect(fixture!.componentInstance.requestedBook()?.id).toBe(book.id);
-    http.expectNone('/api/loans');
   });
 
   it('un error conserva el catálogo, permite reintentar y no finge que no hay préstamos', async () => {

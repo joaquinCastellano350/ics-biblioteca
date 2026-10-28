@@ -165,9 +165,12 @@ export class LoanQueryService {
     const wait = this.data()!.waits.find(item => item.book.id === bookId);
     if (wait) return { label: 'En espera', detail: `Tu posición en cola: ${wait.position}`,
       disabledReason: 'Ya estás esperando este libro.', checking: false };
+    if (this.data()!.requestConstraints.openQueueBookIds.includes(bookId)) {
+      const reason = 'Tu entrada en cola sigue abierta. Actualizá para comprobar su estado';
+      return { label: 'Conciliación pendiente', detail: reason, disabledReason: reason, checking: false };
+    }
     if (this.limitReached()) return { label: 'Tenés cinco préstamos activos', detail: '',
       disabledReason: 'Tenés cinco préstamos activos.', checking: false };
-    // openQueueBookIds no determina por sí solo si una oferta sigue vigente.
     return null;
   }
 

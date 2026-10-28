@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { AuthResponse } from '../src/app/auth/auth.types';
+import type { PersonalCirculation } from '../src/app/loans/loan-query.types';
 
 const university = { id: '00000000-0000-4000-8000-000000000007', name: 'Facultad Regional Córdoba (Córdoba)' };
 const password = ' con espacios ñ 漢字 ';
@@ -30,6 +31,7 @@ test('registro conserva password exacta, cookie y consulta de sesión al recarga
         'Cache-Control': 'no-store', 'Set-Cookie': `biblioteca_session=${'x'.repeat(43)}; HttpOnly; SameSite=Lax; Path=/; Expires=${new Date(session.session.expiresAt).toUTCString()}`,
       }, json: session });
     }
+    await route.abort();
     throw new Error(`API inesperada en la prueba: ${path}`);
   });
   await page.goto('/');
@@ -65,21 +67,34 @@ test('registro conserva password exacta, cookie y consulta de sesión al recarga
 
 test('login informa el error y luego autentica sin cambiar la página ni su contenido', async ({ page }) => {
   let logins = 0;
+  let authenticated = false;
+  let personalRequests = 0;
+  const identity = response();
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/auth/session') return route.fulfill({ status: 401, json: { error: { code: 'AUTH_REQUIRED' } } });
     if (path === '/api/books') return route.fulfill({ json: { books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'libro', title: 'Álgebra', authors: [], subjects: [] }] } });
     if (path === '/api/subjects') return route.fulfill({ json: { subjects: [] } });
+    if (path === '/api/me/circulation') {
+      expect(authenticated).toBe(true);
+      expect(route.request().method()).toBe('GET');
+      personalRequests++;
+      return route.fulfill({ json: { serverTime: identity.serverTime, loans: [], waits: [], reservations: [],
+        requestConstraints: { activeLoanCount: 0, maxActiveLoans: 5, openQueueBookIds: [] } } satisfies PersonalCirculation });
+    }
     if (path === '/api/auth/login') {
       logins++;
       expect(route.request().headers()['x-biblioteca-request']).toBe('1');
       if (route.request().postDataJSON().password !== password) return route.fulfill({ status: 401, json: { error: { code: 'INVALID_CREDENTIALS' } } });
-      return route.fulfill({ json: response() });
+      authenticated = true;
+      return route.fulfill({ json: identity });
     }
+    await route.abort();
     throw new Error(`API inesperada en la prueba: ${path}`);
   });
   await page.goto('/catalogo?q=algebra');
   const article = await page.getByRole('article').elementHandle();
+  expect(personalRequests).toBe(0);
   const opener = page.getByRole('button', { name: 'Ingresar', exact: true });
   await expect(opener).toBeEnabled(); await opener.click();
   const dialog = page.getByRole('dialog'); await expect(dialog).toBeVisible();
@@ -92,6 +107,8 @@ test('login informa el error y luego autentica sin cambiar la página ni su cont
   await dialog.getByRole('button', { name: 'Ingresar', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByText('Hola, Ana')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Solicitar préstamo de Álgebra', exact: true })).toBeEnabled();
+  expect(personalRequests).toBe(1);
   await expect(page).toHaveURL(/\/catalogo\?q=algebra$/);
   expect(await article!.evaluate(element => element.isConnected)).toBe(true);
   expect(logins).toBe(2);

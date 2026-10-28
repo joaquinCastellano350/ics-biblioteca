@@ -165,7 +165,7 @@ describe('LoanQueryService: HTTP privado simulado', () => {
     http.expectNone('/api/me/circulation');
   });
 
-  it('reserva vigente bloquea hasta vencer; una entrada ambigua no prolonga el bloqueo', () => {
+  it('reserva vigente tiene prioridad y al vencer conserva el bloqueo de la entrada abierta', () => {
     vi.useFakeTimers();
     authenticate();
     service.connect(TestBed.inject(DestroyRef));
@@ -176,10 +176,34 @@ describe('LoanQueryService: HTTP privado simulado', () => {
       requestConstraints: { activeLoanCount: 0, maxActiveLoans: 5, openQueueBookIds: ['waiting', 'reserved', 'ambiguous'] } });
     expect(service.bookState('waiting')?.detail).toContain('2');
     expect(service.bookState('reserved')?.label).toBe('Tu turno llegó');
-    expect(service.bookState('ambiguous')).toBeNull();
+    expect(service.bookState('ambiguous')).toEqual({ label: 'Conciliación pendiente',
+      detail: 'Tu entrada en cola sigue abierta. Actualizá para comprobar su estado',
+      disabledReason: 'Tu entrada en cola sigue abierta. Actualizá para comprobar su estado', checking: false });
     vi.advanceTimersByTime(1000);
-    expect(service.bookState('reserved')).toBeNull();
+    expect(service.bookState('reserved')?.label).toBe('Conciliación pendiente');
     expect(service.bookState('waiting')?.label).toBe('En espera');
+    service.refresh();
+    http.expectOne('/api/me/circulation').flush({ ...empty, serverTime: '2026-10-28T12:00:02Z' });
+    expect(service.bookState('reserved')).toBeNull();
+    expect(service.bookState('ambiguous')).toBeNull();
+  });
+
+  it('una sesión nueva o anónima no hereda la conciliación pendiente de la anterior', () => {
+    authenticate();
+    service.refresh();
+    http.expectOne('/api/me/circulation').flush({ ...empty,
+      requestConstraints: { ...empty.requestConstraints, openQueueBookIds: ['offered'] } });
+    expect(service.bookState('offered')?.label).toBe('Conciliación pendiente');
+    auth.session.set({ ...session, user: { ...session.user, id: 'bea' } });
+    expect(service.data()).toBeNull();
+    expect(service.bookState('offered')?.label).toBe('Comprobando tus préstamos');
+    service.refresh();
+    http.expectOne('/api/me/circulation').flush(empty);
+    expect(service.bookState('offered')).toBeNull();
+    auth.session.set(null);
+    auth.status.set('anonymous');
+    expect(service.bookState('offered')).toBeNull();
+    http.expectNone('/api/me/circulation');
   });
 
   it('un error no se interpreta como permiso ni como bloqueo privado permanente', () => {
