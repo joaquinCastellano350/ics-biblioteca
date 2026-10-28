@@ -21,8 +21,8 @@ import { LoanReadingService } from './loan-reading-service';
     @if (error()) { <p-message severity="error" role="alert">{{ error() }}</p-message> }
   `,
   styles: `
-    :host { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 12px; max-width: 100%; }
-    button { min-height: 44px; }
+    :host { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; max-width: 100%; }
+    button { width: 100%; min-height: 44px; justify-content: center; }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
