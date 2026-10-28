@@ -13,6 +13,8 @@ import { SubjectController } from './subject/subject-controller.js';
 import { subjectRoutes } from './subject/subject-routes.js';
 import type { CirculationRepositoryInterface } from './circulation/circulation-repository-interface.js';
 import { CirculationController } from './circulation/circulation-controller.js';
+import type { LoanRepositoryInterface } from './circulation/loan.js';
+import { loanRoutes } from './circulation/loan-routes.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -23,6 +25,7 @@ interface AppServices {
   production?: boolean;
   books?: BookRepositoryInterface;
   circulation?: CirculationRepositoryInterface;
+  loans?: LoanRepositoryInterface;
   subjects?: SubjectRepositoryInterface;
   frontendDirectory?: string;
 }
@@ -57,6 +60,7 @@ export function createApp(services: AppServices) {
   app.use('/api', accountsController(
     services.accounts, services.production ?? false, services.registrationService, services.listUniversities,
   ));
+  if (services.accounts && services.loans) app.use('/api/loans', loanRoutes(services.accounts, services.loans));
   app.use('/api', (_request, response) => {
     response.status(404).json({ error: { code: 'NOT_FOUND', message: 'No se encontró el recurso.' } });
   });

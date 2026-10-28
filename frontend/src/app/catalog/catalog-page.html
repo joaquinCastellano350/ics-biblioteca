@@ -162,7 +162,7 @@
         </div>
         @if (books().length) {
           <div class="book-grid">
-            @for (book of books(); track book.id) { <app-book-card [book]="book" /> }
+            @for (book of books(); track book.id) { <app-book-card [book]="book" (requestLoan)="requestLoan($event)" /> }
           </div>
         } @else if (titleQuery().trim() || selectedAuthors().length || selectedSubjects().length) {
           <div class="title-empty-state" role="status">
@@ -182,3 +182,4 @@
     }
   </section>
 </main>
+<app-loan-dialog [book]="requestedBook()" (closed)="closeLoanDialog()" />

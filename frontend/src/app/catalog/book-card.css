@@ -104,6 +104,7 @@ ul {
 .availability p { margin: 0; }
 .availability strong { font-size: 1rem; }
 .availability .availability-note { margin-top: 5px; font-size: 0.76rem; }
+:host ::ng-deep .request-loan { margin-top: 20px; }
 /* El grisado no usa opacidad ni deshabilita el contenedor: las futuras
    acciones de cola conservan su contraste y su interacción. */
 .unavailable p-card {
