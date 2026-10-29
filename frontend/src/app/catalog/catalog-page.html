@@ -171,6 +171,7 @@
           <div class="book-grid">
             @for (book of books(); track book.id) {
               <app-book-card [book]="book" [personal]="personal.bookState(book.id)"
+                [loanId]="readingLoanIds().get(book.id) ?? null" (readingUnavailable)="personal.refresh()"
                 [requestBlockReason]="personalRequestError()" (requestLoan)="requestLoan($event)" (joinQueue)="requestQueue($event)" />
             }
           </div>

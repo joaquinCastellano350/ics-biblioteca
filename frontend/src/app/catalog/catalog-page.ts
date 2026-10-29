@@ -32,6 +32,7 @@ export class CatalogPage {
   private readonly catalog = inject(CatalogService);
   private readonly auth = inject(AuthService);
   readonly personal = inject(LoanQueryService);
+  readonly readingLoanIds = computed(() => new Map(this.personal.loans().map(loan => [loan.book.id, loan.id])));
   readonly personalRequestError = computed(() => this.auth.status() === 'authenticated' && this.personal.error()
     ? 'No pudimos comprobar tus préstamos. Reintentá para continuar' : '');
   readonly requestedBook = signal<Book | null>(null);

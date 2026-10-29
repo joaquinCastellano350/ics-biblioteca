@@ -12,10 +12,11 @@ import type { Book } from '../catalog/book';
 import { LoanService, type GrantedLoan } from './loan-service';
 import { QueueService, type OpenQueueEntry, type QueueResponse } from './queue-service';
 import { LoanQueryService } from './loan-query.service';
+import { ReadBookButton } from './read-book-button';
 
 @Component({
   selector: 'app-loan-dialog',
-  imports: [DialogModule, ButtonModule, MessageModule, RouterLink],
+  imports: [DialogModule, ButtonModule, MessageModule, RouterLink, ReadBookButton],
   templateUrl: './loan-dialog.html',
   styleUrl: './loan-dialog.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

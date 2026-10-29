@@ -125,7 +125,7 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
   });
 
   for (const state of ['loan', 'wait', 'reservation'] as const) {
-    it(`consulta una sola vez y presenta el estado ${state} con bloqueo accesible`, async () => {
+    it(`consulta una sola vez y presenta el estado ${state} con su acción correspondiente`, async () => {
       await mount();
       expect(requestButton().disabled).toBe(true);
       expect(root().textContent).toContain('Comprobando tus préstamos');
@@ -138,6 +138,15 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
       };
       await flushPrivate(data);
       expect(root().textContent).toContain(state === 'loan' ? 'Lo tenés prestado' : state === 'wait' ? 'En espera' : 'Tu turno llegó');
+      if (state === 'loan') {
+        expect(root().querySelector('.request-loan')).toBeNull();
+        expect(root().querySelector('app-read-book-button button')?.textContent).toContain('Leer online');
+        expect(requestButton().disabled).toBe(false);
+        fixture!.componentInstance.requestLoan(book);
+        expect(fixture!.componentInstance.requestedBook()).toBeNull();
+        http.expectNone('/api/loans');
+        return;
+      }
       expect(requestButton().disabled).toBe(true);
       const describedBy = requestButton().getAttribute('aria-describedby');
       expect(root().querySelector(`[id="${describedBy}"]`)?.textContent?.length).toBeGreaterThan(0);
@@ -265,7 +274,9 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
     refreshed.flush({ books: [{ ...book, availability: { availableCopies: 0, totalCopies: 1 } }] });
     await settle();
     expect(fixture!.componentInstance.titleQuery()).toBe('Redes');
-    expect(requestButton().disabled).toBe(true);
+    expect(root().querySelector('.request-loan')).toBeNull();
+    expect(root().querySelector('app-read-book-button button')?.textContent).toContain('Leer online');
+    expect(requestButton().disabled).toBe(false);
     http.expectNone('/api/me/circulation');
   });
 

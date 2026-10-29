@@ -105,6 +105,7 @@ ul {
 .availability strong { font-size: 1rem; }
 .availability .availability-note { margin-top: 5px; font-size: 0.76rem; }
 :host ::ng-deep .request-loan { margin-top: 20px; }
+app-read-book-button { margin-top: 20px; }
 .personal-state { margin-top: 18px; }
 .personal-state p, .request-reason { margin-top: 8px; font-size: 0.78rem; line-height: 1.5; color: var(--bdu-muted); }
 /* El grisado no usa opacidad ni deshabilita el contenedor: las futuras

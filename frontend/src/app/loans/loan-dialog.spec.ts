@@ -59,6 +59,13 @@ describe('confirmación de préstamo', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.loan()).toEqual(loan);
     expect(fixture.nativeElement.textContent).toContain('noviembre');
+    expect(fixture.nativeElement.querySelector('app-read-book-button')?.textContent).toContain('Empezar a leer');
+    const tab = { opener: {}, closed: false, close: vi.fn(), location: { replace: vi.fn() } };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    fixture.nativeElement.querySelector('app-read-book-button button').click();
+    http.expectOne('/api/loans/prestamo/read-access').flush({ url: 'https://assets.example.org/pdf', expiresAt: loan.dueAt });
+    expect(tab.location.replace).toHaveBeenCalledWith('https://assets.example.org/pdf');
+    vi.restoreAllMocks();
     fixture.componentInstance.confirm();
     http.expectNone('/api/loans');
     expect(granted).toHaveBeenCalledExactlyOnceWith(loan);

@@ -2,6 +2,10 @@
 
 Workspace `@ics-biblioteca/backend`: Express 5, TypeScript estricto y módulos ESM. Desarrollo con tsx, compilación con tsc y pruebas con el runner de Node.js. PostgreSQL en Neon se consulta mediante Prisma ORM 7 y su adaptador para node-postgres (`pg`), con un pool compartido para el proceso persistente de Express.
 
+SCRUM-22 agrega el [acceso firmado al PDF de un préstamo vigente](../docs/scrum-22-lectura.md)
+en `POST /api/loans/:loanId/read-access`. Reutiliza las credenciales de almacenamiento
+y las tablas existentes; no aplica migraciones ni crea préstamos.
+
 Requiere Node.js 24.15 o superior dentro de la rama 24 y npm 11 o superior. Instalar desde la raíz con `npm ci`.
 
 ## Variables de entorno

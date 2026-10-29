@@ -131,7 +131,7 @@ describe('acceso a Mis préstamos', () => {
     }
   });
 
-  it('presenta títulos, vencimientos, posiciones y reservas sin acciones de otras historias', async () => {
+  it('presenta préstamos con lectura y mantiene esperas y reservas sin acciones de otras historias', async () => {
     http.expectOne('/api/auth/session').flush(session);
     await load();
     expect(root.querySelector('.loan-card')?.textContent).toContain('Álgebra privada');
@@ -141,7 +141,26 @@ describe('acceso a Mis préstamos', () => {
     expect(root.querySelector('.reserve-row time')?.getAttribute('datetime')).toBe(circulation.reservations[0].expiresAt);
     expect(root.querySelector('.reserve-row .remaining')?.textContent).toMatch(/1 h 59 min|2 h 0 min/);
     expect(root.querySelector('.reserve-row p-tag')).not.toBeNull();
-    expect(root.querySelector('.reserve-row button, .waiting-item button, .loan-card button')).toBeNull();
+    expect(root.querySelector('.reserve-row button, .waiting-item button')).toBeNull();
+    expect(root.querySelector('.loan-card app-read-book-button button')?.textContent).toContain('Leer online');
+  });
+
+  it('abre el PDF del préstamo seleccionado y actualiza la lista si ya no está vigente', async () => {
+    http.expectOne('/api/auth/session').flush(session);
+    await load();
+    const tab = { opener: {}, closed: false, close: vi.fn(), location: { replace: vi.fn() } };
+    vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    root.querySelector<HTMLButtonElement>('.loan-card app-read-book-button button')!.click();
+    http.expectOne('/api/loans/loan/read-access').flush({ url: 'https://assets.example.org/lectura.pdf', expiresAt: '2026-10-24T12:05:00Z' });
+    expect(tab.location.replace).toHaveBeenCalledWith('https://assets.example.org/lectura.pdf');
+    expect(tab.opener).toBeNull();
+    await settle();
+    root.querySelector<HTMLButtonElement>('.loan-card app-read-book-button button')!.click();
+    http.expectOne('/api/loans/loan/read-access').flush({ error: { code: 'LOAN_NOT_AVAILABLE' } }, { status: 404, statusText: 'Not Found' });
+    await load(empty);
+    expect(root.querySelector('.loan-card')).toBeNull();
+    expect(root.querySelector('app-read-book-button')).toBeNull();
+    expect(tab.close).toHaveBeenCalled();
   });
 
   it('un reloj local desfasado no cambia los plazos calculados desde serverTime', async () => {

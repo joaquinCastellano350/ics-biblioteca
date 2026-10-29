@@ -31,7 +31,10 @@
   } @else if (loan()) {
     <p-message severity="success">Tu préstamo está confirmado.</p-message>
     <p class="due-date">Vence el <strong>{{ dueDate() }}</strong>, en tu horario local.</p>
-    <p-button label="Listo" [fluid]="true" (onClick)="close()" />
+    <div class="actions">
+      <app-read-book-button [loanId]="loan()!.id" label="Empezar a leer" />
+      <p-button label="Listo" variant="outlined" [fluid]="true" (onClick)="close()" />
+    </div>
   } @else {
     <p>Vas a tener el libro en préstamo durante <strong>20 días (480 horas)</strong> desde la confirmación.</p>
     <p class="muted">Podés tener hasta cinco préstamos activos. El cupo se comprueba al confirmar.</p>

@@ -19,6 +19,10 @@ import type { CirculationQueryRepositoryInterface } from './circulation/circulat
 import { circulationQueryRoutes } from './circulation/circulation-query-routes.js';
 import type { QueueRepositoryInterface } from './circulation/queue.js';
 import { queueRoutes } from './circulation/queue-routes.js';
+import type { LoanReadingRepositoryInterface } from './loan/loan-repository-interface.js';
+import type { PdfAccessSigner } from './loan/loan.js';
+import { LoanController } from './loan/loan-controller.js';
+import { loanReadingRoutes } from './loan/loan-routes.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -32,6 +36,8 @@ interface AppServices {
   loans?: LoanRepositoryInterface;
   circulationQueries?: CirculationQueryRepositoryInterface;
   queue?: QueueRepositoryInterface;
+  loanReading?: LoanReadingRepositoryInterface;
+  pdfAccess?: PdfAccessSigner;
   subjects?: SubjectRepositoryInterface;
   frontendDirectory?: string;
 }
@@ -39,6 +45,9 @@ interface AppServices {
 export function createApp(services: AppServices) {
   const app = express();
   app.disable('x-powered-by');
+  if (services.accounts && services.loanReading && services.pdfAccess) {
+    app.use('/api/loans', loanReadingRoutes(services.accounts, new LoanController(services.loanReading, services.pdfAccess)));
+  }
 
   if (services.books) {
     const controller = new BookController(services.books,
