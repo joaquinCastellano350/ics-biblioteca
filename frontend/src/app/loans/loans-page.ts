@@ -6,10 +6,11 @@ import { MessageModule } from 'primeng/message';
 import { TagModule } from 'primeng/tag';
 import { AuthService } from '../auth/auth.service';
 import { LoanQueryService } from './loan-query.service';
+import { ReadBookButton } from './read-book-button';
 
 @Component({
   selector: 'app-loans-page',
-  imports: [RouterLink, ButtonModule, ProgressSpinnerModule, MessageModule, TagModule],
+  imports: [RouterLink, ButtonModule, ProgressSpinnerModule, MessageModule, TagModule, ReadBookButton],
   templateUrl: './loans-page.html',
   styleUrl: './loans-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

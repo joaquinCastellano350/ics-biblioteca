@@ -1,6 +1,7 @@
 .loans-page {
   padding-block: 56px 72px;
 }
+.loan-card app-read-book-button { margin-top: 16px; }
 .page-heading {
   margin-bottom: 40px;
 }

@@ -68,7 +68,8 @@ test('confirma desde la tarjeta, muestra vencimiento y actualiza cupos', async (
   await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
   await expect(page.getByRole('article')).toContainText('0/1 cupos disponibles');
   await expect(page.getByRole('article')).toContainText('Lo tenés prestado');
-  await expect(opener).toBeDisabled();
+  await expect(opener).toHaveCount(0);
+  await expect(page.getByRole('article').getByRole('button', { name: 'Leer online (abre una pestaña nueva)', exact: true })).toBeVisible();
   expect(requests).toBe(1);
 });
 
