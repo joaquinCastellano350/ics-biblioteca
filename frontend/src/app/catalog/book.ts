@@ -16,4 +16,5 @@ export interface Book {
 
 export interface CatalogResponse {
   readonly books: readonly Book[];
+  readonly total: number;
 }

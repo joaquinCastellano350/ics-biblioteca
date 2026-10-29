@@ -15,6 +15,11 @@
       <p-button label="Reintentar consulta personal" variant="text" type="button" (onClick)="refreshPersonal()" />
     </p-message>
   }
+  @if (availabilityError()) {
+    <p-message severity="warn" role="alert">No pudimos comprobar la disponibilidad de los libros.
+      <p-button label="Reintentar actualizacion" variant="text" type="button" (onClick)="refreshAvailability()" />
+    </p-message>
+  }
   <div class="catalog-tools" aria-label="Filtros del catálogo">
     <section class="search-field" aria-label="Buscar libros por título">
       <label class="visually-hidden" for="catalog-title-search">Buscar por título</label>
@@ -163,8 +168,8 @@
       }
       @case ('ready') {
         <div class="catalog-meta" role="status">
-          <p><strong>{{ books().length }}</strong>
-            {{ books().length === 1 ? 'libro en el catálogo' : 'libros en el catálogo' }}</p>
+          <p><strong>{{ totalBooks() }}</strong>
+            {{ totalBooks() === 1 ? 'libro en el catálogo' : 'libros en el catálogo' }}</p>
           <span>Exploración pública</span>
         </div>
         @if (books().length) {
@@ -175,6 +180,11 @@
                 [requestBlockReason]="personalRequestError()" (requestLoan)="requestLoan($event)" />
             }
           </div>
+          <p-paginator class="catalog-paginator" [first]="(currentPage() - 1) * pageSize"
+            [rows]="pageSize" [totalRecords]="totalBooks()" [showCurrentPageReport]="true"
+            currentPageReportTemplate="Página {currentPage} de {totalPages}"
+            [showFirstLastIcon]="false" [attr.inert]="titleSearchPending() ? '' : null"
+            (onPageChange)="changePage($event)" />
         } @else if (titleQuery().trim() || selectedAuthors().length || selectedSubjects().length) {
           <div class="title-empty-state" role="status">
             <i class="pi pi-search" aria-hidden="true"></i>
