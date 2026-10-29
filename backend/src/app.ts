@@ -17,6 +17,8 @@ import type { LoanRepositoryInterface } from './circulation/loan.js';
 import { loanRoutes } from './circulation/loan-routes.js';
 import type { CirculationQueryRepositoryInterface } from './circulation/circulation-query.js';
 import { circulationQueryRoutes } from './circulation/circulation-query-routes.js';
+import type { QueueRepositoryInterface } from './circulation/queue.js';
+import { queueRoutes } from './circulation/queue-routes.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -29,6 +31,7 @@ interface AppServices {
   circulation?: CirculationRepositoryInterface;
   loans?: LoanRepositoryInterface;
   circulationQueries?: CirculationQueryRepositoryInterface;
+  queue?: QueueRepositoryInterface;
   subjects?: SubjectRepositoryInterface;
   frontendDirectory?: string;
 }
@@ -64,6 +67,7 @@ export function createApp(services: AppServices) {
     services.accounts, services.production ?? false, services.registrationService, services.listUniversities,
   ));
   if (services.accounts && services.loans) app.use('/api/loans', loanRoutes(services.accounts, services.loans));
+  if (services.accounts && services.queue) app.use('/api/queue-entries', queueRoutes(services.accounts, services.queue));
   if (services.accounts && services.circulationQueries) {
     app.use('/api', circulationQueryRoutes(services.accounts, services.circulationQueries));
   }

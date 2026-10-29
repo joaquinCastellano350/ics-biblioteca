@@ -72,15 +72,37 @@ test('confirma desde la tarjeta, muestra vencimiento y actualiza cupos', async (
   expect(requests).toBe(1);
 });
 
-test('último cupo agotado: explica la cola y su integración pendiente', async ({ page }, testInfo) => {
-  await page.route('**/api/loans', route => route.fulfill({ status: 409, json: { error: { code: 'NO_AVAILABLE_COPIES' } } }));
+test('último cupo agotado: permite confirmar cola sin repetir la concesión', async ({ page }, testInfo) => {
+  let loanRequests = 0;
+  let queueRequests = 0;
+  await page.route('**/api/loans', route => {
+    loanRequests++;
+    return route.fulfill({ status: 409, json: { error: { code: 'NO_AVAILABLE_COPIES' } } });
+  });
+  await page.route('**/api/queue-entries', async route => {
+    queueRequests++;
+    expect(route.request().method()).toBe('POST');
+    expect(route.request().postDataJSON()).toEqual({ bookId: book.id });
+    expect(route.request().headers()['x-biblioteca-request']).toBe('1');
+    const joinedAt = new Date().toISOString();
+    await page.route('**/api/me/circulation', route => route.fulfill({ json: {
+      ...emptyCirculation(), waits: [{ id: 'queue-entry', book: { id: book.id, title: book.title }, joinedAt, position: 2 }],
+      requestConstraints: { activeLoanCount: 0, maxActiveLoans: 5, openQueueBookIds: [book.id] },
+    } satisfies PersonalCirculation }));
+    return route.fulfill({ status: 201, json: { serverTime: joinedAt,
+      entry: { id: 'queue-entry', book: { id: book.id, title: book.title }, state: 'WAITING', joinedAt, position: 2 } } });
+  });
   await page.goto('/catalogo');
   await page.getByRole('button', { name: `Solicitar préstamo de ${book.title}` }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Confirmar préstamo', exact: true }).click();
   await expect(dialog).toContainText('último cupo');
   await dialog.getByRole('button', { name: 'Entrar en la cola', exact: true }).click();
-  await expect(dialog).toContainText('inscripción en la cola estará disponible próximamente');
+  await expect(dialog).toContainText('Confirmá tu inscripción en la cola');
+  expect(queueRequests).toBe(0);
+  await dialog.getByRole('button', { name: 'Confirmar inscripción', exact: true }).click();
+  await expect(dialog).toContainText('Tu posición actual es 2');
+  expect(loanRequests).toBe(1); expect(queueRequests).toBe(1);
   await page.screenshot({ path: testInfo.outputPath('cupo-agotado.png'), fullPage: true });
 });
 

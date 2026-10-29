@@ -35,6 +35,7 @@ export class CatalogPage {
   readonly personalRequestError = computed(() => this.auth.status() === 'authenticated' && this.personal.error()
     ? 'No pudimos comprobar tus préstamos. Reintentá para continuar' : '');
   readonly requestedBook = signal<Book | null>(null);
+  readonly dialogMode = signal<'loan' | 'queue'>('loan');
   private grantedInDialog = false;
   private availabilityRequest: Subscription | undefined;
   private availabilityCriteria: CatalogSearchCriteria | undefined;
@@ -43,8 +44,22 @@ export class CatalogPage {
     if (book.availability.availableCopies === 0 || this.personalRequestError() || this.personal.bookState(book.id)?.disabledReason) return;
     if (this.auth.ensureAuthenticated()) {
       this.grantedInDialog = false;
+      this.dialogMode.set('loan');
       this.requestedBook.set(book);
     }
+  }
+
+  requestQueue(book: Book): void {
+    if (book.availability.availableCopies !== 0 || this.personalRequestError() || this.personal.bookState(book.id)?.disabledReason) return;
+    if (this.auth.ensureAuthenticated()) {
+      this.grantedInDialog = false;
+      this.dialogMode.set('queue');
+      this.requestedBook.set(book);
+    }
+  }
+
+  onQueueJoined(): void {
+    this.onLoanGranted();
   }
 
   onLoanGranted(): void {

@@ -11,6 +11,7 @@ import { SubjectRepository } from './subject/subject-repository.js';
 import { CirculationRepository } from './circulation/circulation-repository.js';
 import { LoanRepository } from './circulation/loan-repository.js';
 import { CirculationQueryRepository } from './circulation/circulation-query-repository.js';
+import { QueueRepository } from './circulation/queue-repository.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +27,7 @@ const server = createApp({
   circulation: new CirculationRepository(database),
   loans: new LoanRepository(database),
   circulationQueries: new CirculationQueryRepository(database),
+  queue: new QueueRepository(database),
   subjects: new SubjectRepository(database),
   ...(production && existsSync(join(frontendDirectory, 'index.html')) ? { frontendDirectory } : {}),
 }).listen(port, () => { console.log(`API disponible en el puerto ${port}.`); });
