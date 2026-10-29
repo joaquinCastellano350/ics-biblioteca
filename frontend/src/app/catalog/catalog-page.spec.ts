@@ -496,6 +496,54 @@ describe('Public catalog author filtering', () => {
     expect(fixture.nativeElement.querySelector('p-paginator')).toBeNull();
   });
 
+  it('recovers when refreshAvailability shrinks results and loading the last valid page fails', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const page = fixture.componentInstance;
+    const books = Array.from({ length: 12 }, (_, index) => ({
+      id: `book-${index}`, title: `Libro ${index}`, authors: [], subjects: [],
+      availability: { availableCopies: 1, totalCopies: 1 },
+    }));
+    expectBooks(http).flush({ books, total: 25 });
+    await fixture.whenStable();
+
+    page.changePage({ first: 12, rows: 12, page: 1, pageCount: 3 });
+    http.expectOne('/api/books?page=2').flush({ books, total: 25 });
+    await fixture.whenStable();
+    page.changePage({ first: 24, rows: 12, page: 2, pageCount: 3 });
+    http.expectOne('/api/books?page=3').flush({ books: [{ ...books[0], id: 'page-three' }], total: 25 });
+    await fixture.whenStable();
+    expect(page.currentPage()).toBe(3);
+
+    page.refreshAvailability();
+    http.expectOne('/api/books?page=3').flush({ books: [], total: 13 });
+    await fixture.whenStable();
+    const lastPageRequest = http.expectOne('/api/books?page=2');
+    lastPageRequest.flush({}, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(page.currentPage()).toBe(2);
+    expect(page.totalBooks()).toBe(13);
+    expect(page.status()).toBe('error');
+    expect(root.querySelector('[role="alert"]')).not.toBeNull();
+    expect(root.querySelector('.book-grid')).toBeNull();
+    expect(root.querySelector('p-paginator')).toBeNull();
+
+    buttonByText(fixture, 'Volver a intentar').click();
+    const retry = expectBooks(http);
+    expect(retry.request.params.get('page')).toBe('2');
+    retry.flush({ books: [{ ...books[0], id: 'last-valid' }], total: 13 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(page.status()).toBe('ready');
+    expect(page.currentPage()).toBe(2);
+    expect(page.totalBooks()).toBe(13);
+    expect(root.querySelectorAll('app-book-card')).toHaveLength(1);
+    expect(root.querySelector('p-paginator')?.textContent).toContain('2 de 2');
+  });
+
   it('enforces paginator boundaries and ignores out-of-range page events', async () => {
     const { fixture, http } = createCatalogFixture();
     const page = fixture.componentInstance;
