@@ -172,7 +172,7 @@
             @for (book of books(); track book.id) {
               <app-book-card [book]="book" [personal]="personal.bookState(book.id)"
                 [loanId]="readingLoanIds().get(book.id) ?? null" (readingUnavailable)="personal.refresh()"
-                [requestBlockReason]="personalRequestError()" (requestLoan)="requestLoan($event)" />
+                [requestBlockReason]="personalRequestError()" (requestLoan)="requestLoan($event)" (joinQueue)="requestQueue($event)" />
             }
           </div>
         } @else if (titleQuery().trim() || selectedAuthors().length || selectedSubjects().length) {
@@ -193,4 +193,5 @@
     }
   </section>
 </main>
-<app-loan-dialog [book]="requestedBook()" (closed)="closeLoanDialog()" (granted)="onLoanGranted()" />
+<app-loan-dialog [book]="requestedBook()" [mode]="dialogMode()" (closed)="closeLoanDialog()"
+  (granted)="onLoanGranted()" (queued)="onQueueJoined()" />
