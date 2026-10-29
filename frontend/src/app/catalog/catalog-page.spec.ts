@@ -27,7 +27,7 @@ const subjects: readonly CatalogTerm[] = [
 ];
 
 function flushInitialSubjectRequests(http: HttpTestingController): void {
-  http.expectOne('/api/books').flush({ books: [] });
+  http.expectOne('/api/books').flush({ books: [], total: 0 });
   http.expectOne('/api/subjects').flush({ subjects });
 }
 
@@ -102,7 +102,7 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
     if (authenticated) restore.flush(session);
     else restore.flush({}, { status: 401, statusText: 'Unauthorized' });
     fixture = TestBed.createComponent(CatalogPage);
-    http.expectOne('/api/books').flush({ books: [book] });
+    http.expectOne('/api/books').flush({ books: [book], total: 1 });
     http.expectOne('/api/subjects').flush({ subjects: [] });
     await settle();
   }
@@ -182,7 +182,7 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
     const update = Array.from(root().querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.includes('Actualizar disponibilidad y préstamos'))!;
     update.click();
-    http.expectOne('/api/books').flush({ books: [book] });
+    http.expectOne('/api/books').flush({ books: [book], total: 1 });
     await flushPrivate();
     expect(root().querySelector('.personal-state')).toBeNull();
     expect(requestButton().disabled).toBe(false);
@@ -208,7 +208,7 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
     retry.click();
     await settle();
     expect(requestButton().disabled).toBe(true);
-    http.expectOne('/api/books').flush({ books: [book] });
+    http.expectOne('/api/books').flush({ books: [book], total: 1 });
     await flushPrivate();
     expect(root().querySelector('p-message')).toBeNull();
     expect(requestButton().disabled).toBe(false);
@@ -254,7 +254,7 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
     fixture!.componentInstance.searchByTitle('Redes', true);
     const filtered = http.expectOne(request => request.url === '/api/books');
     expect(filtered.request.params.get('title')).toBe('Redes');
-    filtered.flush({ books: [book] });
+    filtered.flush({ books: [book], total: 1 });
     await settle();
     http.expectNone('/api/me/circulation');
     requestButton().click();
@@ -271,7 +271,7 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
     dialog.close();
     const refreshed = http.expectOne(request => request.url === '/api/books');
     expect(refreshed.request.params.get('title')).toBe('Redes');
-    refreshed.flush({ books: [{ ...book, availability: { availableCopies: 0, totalCopies: 1 } }] });
+    refreshed.flush({ books: [{ ...book, availability: { availableCopies: 0, totalCopies: 1 } }], total: 1 });
     await settle();
     expect(fixture!.componentInstance.titleQuery()).toBe('Redes');
     expect(root().querySelector('.request-loan')).toBeNull();
@@ -309,7 +309,7 @@ describe('SCRUM-21: circulación personal integrada al catálogo público', () =
     window.dispatchEvent(new Event('focus'));
     window.dispatchEvent(new Event('focus'));
     http.expectOne('/api/auth/session').flush(session);
-    http.expectOne('/api/books').flush({ books: [book] });
+    http.expectOne('/api/books').flush({ books: [book], total: 1 });
     await flushPrivate();
     expect(root().querySelectorAll('article.book-card').length).toBe(1);
   });
@@ -509,9 +509,265 @@ describe('Public catalog author filtering', () => {
 
   afterEach(() => TestBed.inject(HttpTestingController).verify());
 
+  it('paginates the server result and keeps active filters when navigating', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const books = Array.from({ length: 12 }, (_, index) => ({
+      id: `book-${index}`, title: `Libro ${index}`, authors: [], subjects: [],
+      availability: { availableCopies: 1, totalCopies: 1 },
+    }));
+    expectBooks(http).flush({ books, total: 25 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const paginator = fixture.nativeElement.querySelector('p-paginator');
+    expect(paginator).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('app-book-card')).toHaveLength(12);
+    expect(paginator.textContent).toContain('Página 1 de 3');
+    const next = fixture.nativeElement.querySelector('.p-paginator-next') as HTMLButtonElement;
+    expect(next.disabled).toBe(false);
+    next.click();
+    const request = http.expectOne('/api/books?page=2');
+    request.flush({ books, total: 25 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('app-book-card')).toHaveLength(12);
+    const third = fixture.nativeElement.querySelector('.p-paginator-next') as HTMLButtonElement;
+    third.click();
+    http.expectOne('/api/books?page=3').flush({ books: [{ ...books[0], id: 'last' }], total: 25 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('app-book-card')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('p-paginator').textContent).toContain('Página 3 de 3');
+  });
+
+  it('keeps the title search on page one when a page change is attempted during debounce', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const page = fixture.componentInstance;
+    const books = Array.from({ length: 12 }, (_, index) => ({
+      id: `book-${index}`, title: `Libro ${index}`, authors: [], subjects: [],
+      availability: { availableCopies: 1, totalCopies: 1 },
+    }));
+    expectBooks(http).flush({ books, total: 25 });
+    await fixture.whenStable();
+    page.changePage({ first: 12, rows: 12, page: 1, pageCount: 3 });
+    http.expectOne('/api/books?page=2').flush({ books, total: 25 });
+    await fixture.whenStable();
+
+    vi.useFakeTimers();
+    page.searchByTitle('nuevo');
+    fixture.detectChanges();
+    expect(page.currentPage()).toBe(1);
+    expect(fixture.nativeElement.querySelector('p-paginator')?.hasAttribute('inert')).toBe(true);
+    (fixture.nativeElement.querySelector('.p-paginator-next') as HTMLButtonElement).click();
+    page.changePage({ first: 12, rows: 12, page: 1, pageCount: 3 });
+    expect(page.currentPage()).toBe(1);
+    http.expectNone('/api/books');
+
+    vi.advanceTimersByTime(500);
+    const search = http.expectOne((request) => request.url === '/api/books' && request.params.get('title') === 'nuevo');
+    expect(search.request.params.has('page')).toBe(false);
+    search.flush({ books: [], total: 0 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(page.currentPage()).toBe(1);
+    expect(fixture.nativeElement.querySelector('.title-empty-state h2')?.textContent).toContain('Sin resultados');
+    vi.useRealTimers();
+  });
+
+  it('cancels an availability refresh when a newer load returns to the same criteria', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const page = fixture.componentInstance;
+    const initial = { id: 'initial', title: 'Inicial', authors: [], subjects: [], availability: { availableCopies: 1, totalCopies: 1 } };
+    expectBooks(http).flush({ books: [initial], total: 1 });
+    await fixture.whenStable();
+
+    page.refreshAvailability();
+    const staleRefresh = expectBooks(http);
+    page.searchByTitle('red', true);
+    expect(staleRefresh.cancelled).toBe(true);
+    expectBooks(http).flush({ books: [{ ...initial, id: 'filtered' }], total: 1 });
+    await fixture.whenStable();
+    page.searchByTitle('', true);
+    expectBooks(http).flush({ books: [{ ...initial, id: 'latest', availability: { availableCopies: 0, totalCopies: 1 } }], total: 1 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(page.books().map(({ id }) => id)).toEqual(['latest']);
+    expect(page.books()[0]?.availability.availableCopies).toBe(0);
+    expect(page.status()).toBe('ready');
+  });
+
+  it('moves to the last valid page when the total shrinks and shows no results when it reaches zero', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const page = fixture.componentInstance;
+    const books = Array.from({ length: 12 }, (_, index) => ({
+      id: `book-${index}`, title: `Libro ${index}`, authors: [], subjects: [],
+      availability: { availableCopies: 1, totalCopies: 1 },
+    }));
+    expectBooks(http).flush({ books, total: 25 });
+    await fixture.whenStable();
+    page.changePage({ first: 12, rows: 12, page: 1, pageCount: 3 });
+    http.expectOne('/api/books?page=2').flush({ books, total: 25 });
+    await fixture.whenStable();
+    page.changePage({ first: 24, rows: 12, page: 2, pageCount: 3 });
+    http.expectOne('/api/books?page=3').flush({ books: [], total: 13 });
+    await fixture.whenStable();
+    http.expectOne('/api/books?page=2').flush({ books: [{ ...books[0], id: 'last-valid' }], total: 13 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(page.currentPage()).toBe(2);
+    expect(fixture.nativeElement.querySelector('p-paginator')?.textContent).toContain('Página 2 de 2');
+    expect(fixture.nativeElement.querySelectorAll('app-book-card')).toHaveLength(1);
+
+    page.searchByTitle('sin coincidencias', true);
+    http.expectOne((request) => request.url === '/api/books' && request.params.get('title') === 'sin coincidencias')
+      .flush({ books: [], total: 0 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(page.totalBooks()).toBe(0);
+    expect(page.currentPage()).toBe(1);
+    expect(fixture.nativeElement.querySelector('.title-empty-state h2')?.textContent).toContain('Sin resultados');
+    expect(fixture.nativeElement.querySelector('p-paginator')).toBeNull();
+  });
+
+  it('recovers when refreshAvailability shrinks results and loading the last valid page fails', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const page = fixture.componentInstance;
+    const books = Array.from({ length: 12 }, (_, index) => ({
+      id: `book-${index}`, title: `Libro ${index}`, authors: [], subjects: [],
+      availability: { availableCopies: 1, totalCopies: 1 },
+    }));
+    expectBooks(http).flush({ books, total: 25 });
+    await fixture.whenStable();
+
+    page.changePage({ first: 12, rows: 12, page: 1, pageCount: 3 });
+    http.expectOne('/api/books?page=2').flush({ books, total: 25 });
+    await fixture.whenStable();
+    page.changePage({ first: 24, rows: 12, page: 2, pageCount: 3 });
+    http.expectOne('/api/books?page=3').flush({ books: [{ ...books[0], id: 'page-three' }], total: 25 });
+    await fixture.whenStable();
+    expect(page.currentPage()).toBe(3);
+
+    page.refreshAvailability();
+    http.expectOne('/api/books?page=3').flush({ books: [], total: 13 });
+    await fixture.whenStable();
+    const lastPageRequest = http.expectOne('/api/books?page=2');
+    lastPageRequest.flush({}, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(page.currentPage()).toBe(2);
+    expect(page.totalBooks()).toBe(13);
+    expect(page.status()).toBe('error');
+    expect(root.querySelector('[role="alert"]')).not.toBeNull();
+    expect(root.querySelector('.book-grid')).toBeNull();
+    expect(root.querySelector('p-paginator')).toBeNull();
+
+    buttonByText(fixture, 'Volver a intentar').click();
+    const retry = expectBooks(http);
+    expect(retry.request.params.get('page')).toBe('2');
+    retry.flush({ books: [{ ...books[0], id: 'last-valid' }], total: 13 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(page.status()).toBe('ready');
+    expect(page.currentPage()).toBe(2);
+    expect(page.totalBooks()).toBe(13);
+    expect(root.querySelectorAll('app-book-card')).toHaveLength(1);
+    expect(root.querySelector('p-paginator')?.textContent).toContain('2 de 2');
+  });
+
+  it('enforces paginator boundaries and ignores out-of-range page events', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const page = fixture.componentInstance;
+    const books = Array.from({ length: 12 }, (_, index) => ({
+      id: `book-${index}`, title: `Libro ${index}`, authors: [], subjects: [],
+      availability: { availableCopies: 1, totalCopies: 1 },
+    }));
+    expectBooks(http).flush({ books, total: 25 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelectorAll('.p-paginator-page')).toHaveLength(3);
+    expect((root.querySelector('.p-paginator-prev') as HTMLButtonElement).disabled).toBe(true);
+    root.querySelectorAll<HTMLButtonElement>('.p-paginator-page')[2]!.click();
+    http.expectOne('/api/books?page=3').flush({ books: [{ ...books[0], id: 'last' }], total: 25 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect((root.querySelector('.p-paginator-next') as HTMLButtonElement).disabled).toBe(true);
+    (root.querySelector('.p-paginator-prev') as HTMLButtonElement).click();
+    http.expectOne('/api/books?page=2').flush({ books, total: 25 });
+    await fixture.whenStable();
+
+    page.changePage({ first: 36, rows: 12, page: 3, pageCount: 3 });
+    page.changePage({ first: -12, rows: 12, page: -1, pageCount: 3 });
+    expect(page.currentPage()).toBe(2);
+    http.expectNone('/api/books');
+  });
+
+  it('keeps cards and offers a retry when refreshing availability fails', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const page = fixture.componentInstance;
+    const book = { id: 'book-1', title: 'Redes', authors: [], subjects: [], availability: { availableCopies: 1, totalCopies: 1 } };
+    expectBooks(http).flush({ books: [book], total: 1 });
+    await fixture.whenStable();
+    page.refreshAvailability();
+    expectBooks(http).flush({}, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent).toContain('No pudimos comprobar la disponibilidad');
+    expect(fixture.nativeElement.querySelectorAll('app-book-card')).toHaveLength(1);
+    expect(page.status()).toBe('ready');
+
+    buttonByText(fixture, 'Reintentar actualizacion').click();
+    expectBooks(http).flush({ books: [{ ...book, availability: { availableCopies: 0, totalCopies: 1 } }], total: 1 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+    expect(page.books()[0]?.availability.availableCopies).toBe(0);
+  });
+
+  it('resets to page one for each criterion and retains all criteria when the page changes', async () => {
+    const { fixture, http } = createCatalogFixture();
+    const page = fixture.componentInstance;
+    const author = { id: 'author-1', name: 'Autora' };
+    const subject = subjects[0]!;
+    expectBooks(http).flush({ books: [], total: 25 });
+    await fixture.whenStable();
+
+    page.currentPage.set(3);
+    page.searchByTitle('red', true);
+    let request = http.expectOne('/api/books?title=red');
+    expect(request.request.params.has('page')).toBe(false);
+    request.flush({ books: [], total: 25 });
+    await fixture.whenStable();
+
+    page.currentPage.set(3);
+    (page as unknown as { setAppliedAuthors(value: readonly CatalogTerm[]): void }).setAppliedAuthors([author]);
+    request = http.expectOne('/api/books?title=red&authorIds=author-1');
+    expect(request.request.params.has('page')).toBe(false);
+    request.flush({ books: [], total: 25 });
+    await fixture.whenStable();
+
+    page.currentPage.set(3);
+    (page as unknown as { setAppliedSubjects(value: readonly CatalogTerm[]): void }).setAppliedSubjects([subject]);
+    request = http.expectOne((candidate) => candidate.url === '/api/books'
+      && candidate.params.get('title') === 'red' && candidate.params.get('authorIds') === 'author-1'
+      && candidate.params.get('subjectIds') === subject.id);
+    expect(request.request.params.has('page')).toBe(false);
+    request.flush({ books: [], total: 25 });
+    await fixture.whenStable();
+
+    page.changePage({ first: 12, rows: 12, page: 1, pageCount: 3 });
+    request = http.expectOne((candidate) => candidate.url === '/api/books'
+      && candidate.params.get('title') === 'red' && candidate.params.get('authorIds') === 'author-1'
+      && candidate.params.get('subjectIds') === subject.id && candidate.params.get('page') === '2');
+    request.flush({ books: [], total: 25 });
+    await fixture.whenStable();
+  });
+
   it('renders the PrimeNG title search, searches while typing, and shows Sin resultados', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
     const input = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
@@ -524,7 +780,7 @@ describe('Public catalog author filtering', () => {
     await new Promise(resolve => setTimeout(resolve, 510));
     const search = http.expectOne('/api/books?title=cien');
     expect(search.request.params.get('title')).toBe('cien');
-    search.flush({ books: [] });
+    search.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.title-empty-state h2')?.textContent).toContain('Sin resultados');
@@ -532,7 +788,7 @@ describe('Public catalog author filtering', () => {
     buttonByText(fixture, 'Limpiar todos los filtros').click();
     const cleared = expectBooks(http);
     expect(cleared.request.params.has('title')).toBe(false);
-    cleared.flush({ books: [] });
+    cleared.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(input.value).toBe('');
@@ -544,7 +800,7 @@ describe('Public catalog author filtering', () => {
     expectBooks(http).flush({ books: [
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
-    ] });
+    ], total: 2 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     await typeAuthorSearch(fixture, 'ana');
@@ -557,7 +813,7 @@ describe('Public catalog author filtering', () => {
     byAuthor.flush({ books: [
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
-    ] });
+    ], total: 2 });
     await fixture.whenStable();
 
     const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
@@ -567,7 +823,7 @@ describe('Public catalog author filtering', () => {
     const combined = expectBooks(http);
     expect(combined.request.params.get('title')).toBe('red');
     expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
-    combined.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    combined.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }], total: 1 });
     await fixture.whenStable();
 
     title.value = '';
@@ -579,7 +835,7 @@ describe('Public catalog author filtering', () => {
     titleCleared.flush({ books: [
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Algoritmos', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] },
-    ] });
+    ], total: 2 });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(1);
@@ -588,7 +844,7 @@ describe('Public catalog author filtering', () => {
 
   it('opens PrimeNG Select without fetching all authors and prompts for a search term', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
 
     const select = fixture.debugElement.query(By.directive(Select));
@@ -606,7 +862,7 @@ describe('Public catalog author filtering', () => {
 
   it('moves focus into the author search and returns focus to the Select when confirmed or cancelled', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     const select = selectRoot(fixture);
     await openAuthorSelect(fixture);
@@ -616,7 +872,7 @@ describe('Public catalog author filtering', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(document.activeElement).toBe(select.querySelector('.p-select-label'));
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
 
     await openAuthorSelect(fixture);
@@ -627,12 +883,12 @@ describe('Public catalog author filtering', () => {
     expect(fixture.componentInstance.authorMenuOpen()).toBe(false);
     expect(fixture.nativeElement.querySelector('.catalog-author-overlay')).toBeNull();
     expect(document.activeElement).toBe(select.querySelector('.p-select-label'));
-    for (const request of http.match('/api/books')) request.flush({ books: [] });
+    for (const request of http.match('/api/books')) request.flush({ books: [], total: 0 });
   });
 
   it('does not focus the author search if PrimeNG closes before the next render', () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     fixture.detectChanges();
     const searchInput = document.createElement('input');
     searchInput.setAttribute('aria-label', 'Buscar autores');
@@ -666,7 +922,7 @@ describe('Public catalog author filtering', () => {
 
   it('keeps the title filter when all selected authors are removed', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     await typeAuthorSearch(fixture, 'ana');
@@ -677,7 +933,7 @@ describe('Public catalog author filtering', () => {
 
     const byAuthor = expectBooks(http);
     expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
-    byAuthor.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    byAuthor.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }], total: 1 });
     await fixture.whenStable();
 
     const title = fixture.nativeElement.querySelector('#catalog-title-search') as HTMLInputElement;
@@ -687,14 +943,14 @@ describe('Public catalog author filtering', () => {
     const combined = expectBooks(http);
     expect(combined.request.params.get('title')).toBe('red');
     expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
-    combined.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }] });
+    combined.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [] }], total: 1 });
     await fixture.whenStable();
 
     buttonByText(fixture, 'Quitar filtro de autor Ana').click();
     const titleOnly = expectBooks(http);
     expect(titleOnly.request.params.get('title')).toBe('red');
     expect(titleOnly.request.params.has('authorIds')).toBe(false);
-    titleOnly.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Redes avanzadas', authors: [], subjects: [] }] });
+    titleOnly.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b2', title: 'Redes avanzadas', authors: [], subjects: [] }], total: 1 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -705,7 +961,7 @@ describe('Public catalog author filtering', () => {
 
   it('sends PrimeNG filter input to the remote author search endpoint', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     http.expectNone('/api/authors');
@@ -721,7 +977,7 @@ describe('Public catalog author filtering', () => {
 
   it('renders PrimeNG checkboxes and keeps each option synchronized with provisional selection', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     await typeAuthorSearch(fixture, 'a');
@@ -761,7 +1017,7 @@ describe('Public catalog author filtering', () => {
 
   it('selects several remote authors provisionally, confirms them, and filters books through the backend', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     await typeAuthorSearch(fixture, 'a');
@@ -780,7 +1036,7 @@ describe('Public catalog author filtering', () => {
 
     const filtered = expectBooks(http);
     expect(filtered.request.params.getAll('authorIds')).toEqual(['author-1', 'author-2']);
-    filtered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-3', name: 'Autora visible' }], subjects: [] }] });
+    filtered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Redes', authors: [{ id: 'author-3', name: 'Autora visible' }], subjects: [] }], total: 1 });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Redes');
@@ -791,7 +1047,7 @@ describe('Public catalog author filtering', () => {
 
   it('shows the applied author count without overflowing when remote results change and the selector reopens', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
 
@@ -807,7 +1063,7 @@ describe('Public catalog author filtering', () => {
 
     const filtered = expectBooks(http);
     expect(filtered.request.params.getAll('authorIds')).toEqual(['author-1']);
-    filtered.flush({ books: [] });
+    filtered.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(selectedAuthorLabel(fixture)).toBe('Autores (1)');
@@ -824,7 +1080,7 @@ describe('Public catalog author filtering', () => {
 
   it('discards provisional selections when the actual PrimeNG overlay closes', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     await typeAuthorSearch(fixture, 'ana');
@@ -845,7 +1101,7 @@ describe('Public catalog author filtering', () => {
 
   it('removes a selected author chip and stops sending that author ID to the backend', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     await typeAuthorSearch(fixture, 'a');
@@ -857,13 +1113,13 @@ describe('Public catalog author filtering', () => {
     chooseAuthor(fixture, 'Beatriz');
     buttonByText(fixture, 'Listo').click();
     fixture.detectChanges();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
 
     buttonByText(fixture, 'Quitar filtro de autor Ana').click();
     const remaining = expectBooks(http);
     expect(remaining.request.params.getAll('authorIds')).toEqual(['author-2']);
-    remaining.flush({ books: [] });
+    remaining.flush({ books: [], total: 0 });
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('.chip')).toHaveLength(1);
   });
@@ -876,7 +1132,7 @@ describe('Public catalog author filtering', () => {
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b3', title: 'Libro tres', authors: [], subjects: [] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b4', title: 'Libro cuatro', authors: [], subjects: [] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b5', title: 'Libro cinco', authors: [], subjects: [] },
-    ] });
+    ], total: 5 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     await typeAuthorSearch(fixture, 'William Stallings');
@@ -890,7 +1146,7 @@ describe('Public catalog author filtering', () => {
 
     const filtered = expectBooks(http);
     expect(filtered.request.params.getAll('authorIds')).toEqual(['author-1']);
-    filtered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Libro uno', authors: [{ id: 'author-1', name: 'William Stallings' }], subjects: [] }] });
+    filtered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'b1', title: 'Libro uno', authors: [{ id: 'author-1', name: 'William Stallings' }], subjects: [] }], total: 1 });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(selectedAuthorLabel(fixture)).toBe('Autores (1)');
@@ -905,7 +1161,7 @@ describe('Public catalog author filtering', () => {
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b3', title: 'Libro tres', authors: [], subjects: [] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b4', title: 'Libro cuatro', authors: [], subjects: [] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'b5', title: 'Libro cinco', authors: [], subjects: [] },
-    ] });
+    ], total: 5 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -916,7 +1172,7 @@ describe('Public catalog author filtering', () => {
 
   it('shows distinct empty-result and error feedback for remote author searches', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
 
@@ -946,7 +1202,7 @@ describe('Public catalog author filtering', () => {
     request.flush({ books: [
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Redes', authors: [{ id: 'a1', name: 'Ana' }, { id: 'a2', name: 'Beatriz' }], subjects: [{ id: 's1', name: 'Redes' }, { id: 's2', name: 'Sistemas' }] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-2', title: 'Algoritmos', authors: [], subjects: [] },
-    ] });
+    ], total: 2 });
     await fixture.whenStable();
     const cards = fixture.nativeElement.querySelectorAll('article');
     expect(cards).toHaveLength(2);
@@ -963,7 +1219,7 @@ describe('Public catalog author filtering', () => {
     expect(fixture.nativeElement.querySelector('[role="alert"]')).not.toBeNull();
 
     buttonByText(fixture, 'Volver a intentar').click();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Todavía no hay libros cargados');
@@ -971,7 +1227,7 @@ describe('Public catalog author filtering', () => {
 
   it('cancels a pending author search when the page is destroyed', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     await openAuthorSelect(fixture);
     await typeAuthorSearch(fixture, 'ana');
@@ -984,7 +1240,7 @@ describe('Public catalog author filtering', () => {
     const fixture = TestBed.createComponent(CatalogPage);
     const http = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
-    http.expectOne('/api/books').flush({ books: [] });
+    http.expectOne('/api/books').flush({ books: [], total: 0 });
     const subjectRequest = http.expectOne('/api/subjects');
     expect(subjectRequest.request.method).toBe('GET');
     subjectRequest.flush({ subjects });
@@ -1026,7 +1282,7 @@ describe('Public catalog author filtering', () => {
     const fixture = TestBed.createComponent(CatalogPage);
     const http = TestBed.inject(HttpTestingController);
     http.expectOne('/api/books').flush({
-      books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Libro visible', authors: [], subjects: [] }],
+      books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Libro visible', authors: [], subjects: [] }], total: 1,
     });
     http.expectOne('/api/subjects').flush({ subjects });
     await fixture.whenStable();
@@ -1052,7 +1308,7 @@ describe('Public catalog author filtering', () => {
     fixture.detectChanges();
     const multipleSubjects = expectBooks(http);
     expect(multipleSubjects.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id, subjects[1]?.id]);
-    multipleSubjects.flush({ books: [] });
+    multipleSubjects.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1083,7 +1339,7 @@ describe('Public catalog author filtering', () => {
     const withAuthor = expectBooks(http);
     expect(withAuthor.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id, subjects[1]?.id]);
     expect(withAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
-    withAuthor.flush({ books: [] });
+    withAuthor.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1096,7 +1352,7 @@ describe('Public catalog author filtering', () => {
     expect(combined.request.params.get('title')).toBe('redes');
     expect(combined.request.params.getAll('authorIds')).toEqual(['author-1']);
     expect(combined.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id, subjects[1]?.id]);
-    combined.flush({ books: [] });
+    combined.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1106,7 +1362,7 @@ describe('Public catalog author filtering', () => {
     expect(afterRemoval.request.params.get('title')).toBe('redes');
     expect(afterRemoval.request.params.getAll('authorIds')).toEqual(['author-1']);
     expect(afterRemoval.request.params.getAll('subjectIds')).toEqual([subjects[1]?.id]);
-    afterRemoval.flush({ books: [] });
+    afterRemoval.flush({ books: [], total: 0 });
     await fixture.whenStable();
   });
 
@@ -1126,7 +1382,7 @@ describe('Public catalog author filtering', () => {
     buttonByText(fixture, 'Listo').click();
     fixture.detectChanges();
     const withAuthor = expectBooks(http);
-    withAuthor.flush({ books: [] });
+    withAuthor.flush({ books: [], total: 0 });
     await fixture.whenStable();
 
     const title = root.querySelector('#catalog-title-search') as HTMLInputElement;
@@ -1137,7 +1393,7 @@ describe('Public catalog author filtering', () => {
     const withTitle = expectBooks(http);
     expect(withTitle.request.params.get('title')).toBe('redes');
     expect(withTitle.request.params.getAll('authorIds')).toEqual(['author-1']);
-    withTitle.flush({ books: [] });
+    withTitle.flush({ books: [], total: 0 });
     await fixture.whenStable();
 
     openSubjectSelector(fixture);
@@ -1181,7 +1437,7 @@ describe('Public catalog author filtering', () => {
     expect(afterCancel.request.params.get('title')).toBe('algoritmos');
     expect(afterCancel.request.params.getAll('authorIds')).toEqual(['author-1']);
     expect(afterCancel.request.params.has('subjectIds')).toBe(false);
-    afterCancel.flush({ books: [] });
+    afterCancel.flush({ books: [], total: 0 });
     await fixture.whenStable();
   });
 
@@ -1189,7 +1445,7 @@ describe('Public catalog author filtering', () => {
     const fixture = TestBed.createComponent(CatalogPage);
     const http = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
-    http.expectOne('/api/books').flush({ books: [] });
+    http.expectOne('/api/books').flush({ books: [], total: 0 });
     http.expectOne('/api/subjects').flush({ subjects });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -1202,7 +1458,7 @@ describe('Public catalog author filtering', () => {
     buttonByText(fixture, 'Listo').click();
     const byAuthor = expectBooks(http);
     expect(byAuthor.request.params.getAll('authorIds')).toEqual(['author-1']);
-    byAuthor.flush({ books: [] });
+    byAuthor.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1215,7 +1471,7 @@ describe('Public catalog author filtering', () => {
     const byAuthorAndSubject = expectBooks(http);
     expect(byAuthorAndSubject.request.params.getAll('authorIds')).toEqual(['author-1']);
     expect(byAuthorAndSubject.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id]);
-    byAuthorAndSubject.flush({ books: [] });
+    byAuthorAndSubject.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1227,7 +1483,7 @@ describe('Public catalog author filtering', () => {
     expect(noResults.request.params.get('title')).toBe('sin coincidencias');
     expect(noResults.request.params.getAll('authorIds')).toEqual(['author-1']);
     expect(noResults.request.params.getAll('subjectIds')).toEqual([subjects[0]?.id]);
-    noResults.flush({ books: [] });
+    noResults.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1243,7 +1499,7 @@ describe('Public catalog author filtering', () => {
     unfiltered.flush({ books: [
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Redes', authors: [{ id: 'author-1', name: 'Ana' }], subjects: [subjects[0]!] },
       { availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-2', title: 'Algoritmos', authors: [], subjects: [] },
-    ] });
+    ], total: 2 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1262,7 +1518,7 @@ describe('Public catalog author filtering', () => {
 
   it('lets the empty-results action remove an author-only filter', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
 
     await openAuthorSelect(fixture);
@@ -1273,7 +1529,7 @@ describe('Public catalog author filtering', () => {
     buttonByText(fixture, 'Listo').click();
     const authorOnly = expectBooks(http);
     expect(authorOnly.request.params.getAll('authorIds')).toEqual(['author-1']);
-    authorOnly.flush({ books: [] });
+    authorOnly.flush({ books: [], total: 0 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1283,7 +1539,7 @@ describe('Public catalog author filtering', () => {
     expect(unfiltered.request.params.has('authorIds')).toBe(false);
     expect(unfiltered.request.params.has('title')).toBe(false);
     expect(unfiltered.request.params.has('subjectIds')).toBe(false);
-    unfiltered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Redes', authors: [], subjects: [] }] });
+    unfiltered.flush({ books: [{ availability: { availableCopies: 1, totalCopies: 1 }, id: 'book-1', title: 'Redes', authors: [], subjects: [] }], total: 1 });
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -1296,7 +1552,7 @@ describe('Public catalog author filtering', () => {
     const fixture = TestBed.createComponent(CatalogPage);
     const http = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
-    http.expectOne('/api/books').flush({ books: [] });
+    http.expectOne('/api/books').flush({ books: [], total: 0 });
     const select = fixture.debugElement.query(By.css('p-select.subject-select')).componentInstance as Select;
     expect(select.loading()).toBe(true);
     expect(select.disabled()).toBe(true);
@@ -1315,7 +1571,7 @@ describe('Public catalog author filtering', () => {
   });
   it('clears provisional authors on Listo without applying them early', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
 
     await openAuthorSelect(fixture);
@@ -1332,7 +1588,7 @@ describe('Public catalog author filtering', () => {
     buttonByText(fixture, 'Listo').click();
     const cleared = expectBooks(http);
     expect(cleared.request.params.has('authorIds')).toBe(false);
-    cleared.flush({ books: [] });
+    cleared.flush({ books: [], total: 0 });
     await fixture.whenStable();
   });
   it('muestra disponibilidad y distingue cero cupos con una sola consulta de libros', async () => {
@@ -1341,7 +1597,7 @@ describe('Public catalog author filtering', () => {
     request.flush({ books: [
       { id: 'available', title: 'Redes', authors: [], subjects: [], availability: { availableCopies: 2, totalCopies: 5 } },
       { id: 'unavailable', title: 'Álgebra', authors: [], subjects: [], availability: { availableCopies: 0, totalCopies: 1 } },
-    ] });
+    ], total: 2 });
     await fixture.whenStable();
     fixture.detectChanges();
     const cards: NodeListOf<HTMLElement> = fixture.nativeElement.querySelectorAll('article.book-card');
@@ -1384,7 +1640,7 @@ describe('Catalog search delay', () => {
 
   it('waits 500 ms since the latest title change and cancels old work immediately', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     vi.useFakeTimers();
     const page = fixture.componentInstance;
@@ -1401,7 +1657,7 @@ describe('Catalog search delay', () => {
     vi.advanceTimersByTime(499);
     http.expectNone(request => request.url === '/api/books');
     vi.advanceTimersByTime(1);
-    http.expectOne('/api/books?title=red').flush({ books: [] });
+    http.expectOne('/api/books?title=red').flush({ books: [], total: 0 });
     page.searchByTitle('red ');
     vi.advanceTimersByTime(500);
     http.expectNone(request => request.url === '/api/books');
@@ -1409,14 +1665,14 @@ describe('Catalog search delay', () => {
     vi.advanceTimersByTime(400);
     page.searchByTitle('otro');
     vi.advanceTimersByTime(500);
-    http.expectOne('/api/books?title=otro').flush({ books: [] });
+    http.expectOne('/api/books?title=otro').flush({ books: [], total: 0 });
     page.searchByTitle('', true);
-    http.expectOne('/api/books').flush({ books: [] });
+    http.expectOne('/api/books').flush({ books: [], total: 0 });
   });
 
   it('clear and explicit filter actions replace pending typing without a delayed duplicate', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     vi.useFakeTimers();
     const page = fixture.componentInstance;
@@ -1426,19 +1682,19 @@ describe('Catalog search delay', () => {
     const immediate = expectBooks(http);
     expect(immediate.request.params.get('title')).toBe('red');
     expect(immediate.request.params.getAll('subjectIds')).toEqual(subjects.map(({ id }) => id));
-    immediate.flush({ books: [] });
+    immediate.flush({ books: [], total: 0 });
     vi.advanceTimersByTime(500);
     http.expectNone(request => request.url === '/api/books');
     page.searchByTitle('otro');
     page.clearFilters();
-    http.expectOne('/api/books').flush({ books: [] });
+    http.expectOne('/api/books').flush({ books: [], total: 0 });
     vi.advanceTimersByTime(500);
     http.expectNone(request => request.url === '/api/books');
   });
 
   it('debounces authors and cancels pending or active searches when the menu closes', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     vi.useFakeTimers();
     const page = fixture.componentInstance;
@@ -1462,7 +1718,7 @@ describe('Catalog search delay', () => {
 
   it('does not send pending searches after leaving the catalog', async () => {
     const { fixture, http } = createCatalogFixture();
-    expectBooks(http).flush({ books: [] });
+    expectBooks(http).flush({ books: [], total: 0 });
     await fixture.whenStable();
     vi.useFakeTimers();
     fixture.componentInstance.searchByTitle('pendiente');
