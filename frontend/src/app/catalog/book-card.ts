@@ -20,10 +20,16 @@ export class BookCard {
   readonly personal = input<BookCirculationState | null>(null);
   readonly requestBlockReason = input('');
   readonly requestLoan = output<Book>();
+  readonly joinQueue = output<Book>();
+  readonly queueDisabledReason = computed(() => this.requestBlockReason() || this.personal()?.disabledReason || '');
   readonly disabledReason = computed(() => this.requestBlockReason() || this.personal()?.disabledReason
     || (this.book().availability.availableCopies === 0 ? 'Sin cupos disponibles.' : ''));
 
   request(): void {
     if (!this.disabledReason()) this.requestLoan.emit(this.book());
+  }
+
+  requestQueue(): void {
+    if (this.book().availability.availableCopies === 0 && !this.queueDisabledReason()) this.joinQueue.emit(this.book());
   }
 }

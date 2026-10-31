@@ -49,5 +49,12 @@
         [pt]="{ root: { 'aria-describedby': disabledReason() ? 'loan-reason-' + book().id : undefined } }" />
       @if (disabledReason()) { <p class="request-reason" [id]="'loan-reason-' + book().id">{{ disabledReason() }}</p> }
     }
+    @if (book().availability.availableCopies === 0) {
+      <p-button label="Unirse a la cola" [fluid]="true" type="button" severity="secondary"
+        [disabled]="!!queueDisabledReason()" [loading]="personal()?.checking ?? false"
+        [ariaLabel]="'Unirse a la cola de ' + book().title" (onClick)="requestQueue()"
+        [pt]="{ root: { 'aria-describedby': queueDisabledReason() ? 'queue-reason-' + book().id : undefined } }" />
+      @if (queueDisabledReason()) { <p class="request-reason" [id]="'queue-reason-' + book().id">{{ queueDisabledReason() }}</p> }
+    }
   </p-card>
 </article>

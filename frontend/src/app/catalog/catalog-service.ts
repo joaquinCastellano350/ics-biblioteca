@@ -6,6 +6,7 @@ export interface CatalogSearchCriteria {
   readonly title?: string;
   readonly authorIds?: readonly string[];
   readonly subjectIds?: readonly string[];
+  readonly page?: number;
 }
 
 // Public endpoint: no session, credentials or personal data are required.
@@ -30,6 +31,7 @@ export class CatalogService {
     if (criteria.title?.trim()) params['title'] = criteria.title.trim();
     if (criteria.authorIds?.length) params['authorIds'] = criteria.authorIds;
     if (criteria.subjectIds?.length) params['subjectIds'] = criteria.subjectIds;
+    if (criteria.page !== undefined && criteria.page > 1) params['page'] = String(criteria.page);
     return this.http.get<CatalogResponse>(this.url, { params });
   }
 

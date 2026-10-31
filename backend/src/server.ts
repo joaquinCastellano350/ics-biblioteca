@@ -11,6 +11,7 @@ import { SubjectRepository } from './subject/subject-repository.js';
 import { CirculationRepository } from './circulation/circulation-repository.js';
 import { LoanRepository } from './circulation/loan-repository.js';
 import { CirculationQueryRepository } from './circulation/circulation-query-repository.js';
+import { QueueRepository } from './circulation/queue-repository.js';
 import { LoanReadingRepository } from './loan/loan-repository.js';
 import { S3PdfAccessSigner } from './loan/pdf-access.js';
 import { existsSync } from 'node:fs';
@@ -28,6 +29,7 @@ const server = createApp({
   circulation: new CirculationRepository(database),
   loans: new LoanRepository(database),
   circulationQueries: new CirculationQueryRepository(database),
+  queue: new QueueRepository(database),
   loanReading: new LoanReadingRepository(database),
   pdfAccess: new S3PdfAccessSigner(storage, storageBucket),
   subjects: new SubjectRepository(database),
