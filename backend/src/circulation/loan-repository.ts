@@ -2,7 +2,6 @@ import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import { AccountError } from '../accounts/account-error.js';
 import { CirculationRepository, retryable } from './circulation-repository.js';
 import type { LoanRepositoryInterface, LoanResult } from './loan.js';
-import { scheduleLoanNotifications } from '../notifications/schedule-loan-notifications.js';
 
 const HOUR = 3_600_000;
 const publicLoan = { id: true, bookId: true, startedAt: true, dueAt: true } as const;
@@ -62,7 +61,17 @@ export class LoanRepository implements LoanRepositoryInterface {
     }
     const dueAt = new Date(now.getTime() + 480 * HOUR);
     const loan = await tx.loan.create({ data: { userId, bookId, startedAt: now, dueAt }, select: publicLoan });
-    await scheduleLoanNotifications(tx, { ...loan, userId });
+    const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+    const book = await tx.book.findUniqueOrThrow({ where: { id: bookId }, select: { title: true } });
+    await tx.notificationOutbox.createMany({ data: [
+      { kind: 'LOAN_DAY_10', suffix: 'day10', at: new Date(now.getTime() + 240 * HOUR) },
+      { kind: 'LOAN_DUE_IN_3_DAYS', suffix: 'due3', at: new Date(dueAt.getTime() - 72 * HOUR) },
+      { kind: 'LOAN_EXPIRED', suffix: 'expired', at: dueAt },
+    ].map(({ kind, suffix, at }) => ({
+      userId, loanId: loan.id, kind, dedupKey: `loan:${loan.id}:${suffix}`, recipientEmail: user.email,
+      payload: { bookTitle: book.title, startedAt: now.toISOString(), dueAt: dueAt.toISOString() },
+      scheduledAt: at, nextAttemptAt: at,
+    })) });
     return { loan, created: true };
   }
 }
