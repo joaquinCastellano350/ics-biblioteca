@@ -1,13 +1,17 @@
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import { AccountError } from '../accounts/account-error.js';
 import { CirculationRepository, retryable } from './circulation-repository.js';
+import { preserveQueuePriority, type ReleasedCapacityHandler } from './released-capacity-handler.js';
 import type { LoanRepositoryInterface, LoanResult } from './loan.js';
 
 const HOUR = 3_600_000;
 const publicLoan = { id: true, bookId: true, startedAt: true, dueAt: true } as const;
 
 export class LoanRepository implements LoanRepositoryInterface {
-  constructor(private readonly database: Pick<PrismaClient, '$transaction'>) {}
+  constructor(
+    private readonly database: Pick<PrismaClient, '$transaction'>,
+    private readonly releasedCapacity: ReleasedCapacityHandler = preserveQueuePriority,
+  ) {}
 
   async requestLoan(userId: string, bookId: string): Promise<LoanResult> {
     for (let attempt = 0; ; attempt++) {
@@ -37,8 +41,6 @@ export class LoanRepository implements LoanRepositoryInterface {
     const now = clock.now;
     const active = { closedAt: null, startedAt: { lte: now }, dueAt: { gt: now } };
 
-    // Libera el índice de préstamo abierto; un vencimiento nunca cuenta como activo.
-    await tx.loan.updateMany({ where: { bookId, closedAt: null, dueAt: { lte: now } }, data: { closedAt: now } });
     const expired = await tx.reservation.findMany({
       where: { bookId, state: 'HELD', expiresAt: { lte: now } }, select: { id: true, queueEntryId: true },
     });
@@ -51,7 +53,8 @@ export class LoanRepository implements LoanRepositoryInterface {
 
     // Reutiliza la protección de prioridad de SCRUM-18. SCRUM-25 incorporará
     // aquí la conciliación completa que persiste ofertas y avisos de turno.
-    const [occupancy] = await new CirculationRepository(this.database).findOccupancyInTransaction(tx, [bookId], now);
+    const [occupancy] = await new CirculationRepository(this.database, this.releasedCapacity)
+      .findOccupancyInTransaction(tx, [bookId], now);
     if (await tx.loan.count({ where: { ...active, userId } }) >= 5) return { code: 'LOAN_LIMIT_REACHED' };
     if (await tx.queueEntry.findFirst({ where: { userId, bookId, state: { in: ['WAITING', 'OFFERED'] } } })) {
       return { code: 'OPEN_QUEUE_ENTRY' };

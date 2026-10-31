@@ -49,6 +49,7 @@ test('rechazo puntual por límite: terminal, en orden y solo al llegar el turno'
       const after = await db.queueEntry.findUniqueOrThrow({ where: { id: first.id } });
       assert.equal(after.state, 'REJECTED_LIMIT');
       assert.deepEqual(after.closedAt, rejected.closedAt);
+      // Este vencimiento pertenece a otro libro y la consulta actual no lo procesa.
       assert.equal((await db.loan.findUniqueOrThrow({ where: { id: loans[0]!.id } })).closedAt, null);
       assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 0);
       assert.equal(await db.notificationOutbox.count(), 0);
@@ -66,7 +67,9 @@ test('rechazo puntual por límite: terminal, en orden y solo al llegar el turno'
       await db.loan.update({ where: { id: occupying.id }, data: { startedAt: at(-481), dueAt: at(-1) } });
       assert.equal((await availability(target.id))[0]?.availableCopies, 1);
       assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: waiting.id } })).state, 'REJECTED_LIMIT');
-      assert.equal((await db.loan.findUniqueOrThrow({ where: { id: occupying.id } })).closedAt, null);
+      const processed = await db.loan.findUniqueOrThrow({ where: { id: occupying.id } });
+      assert.ok(processed.closedAt);
+      assert.ok(processed.closedAt >= processed.dueAt);
     });
 
     await t.test('una espera elegible anterior consume la prioridad del único cupo', async () => {
@@ -100,6 +103,25 @@ test('rechazo puntual por límite: terminal, en orden y solo al llegar el turno'
       const after = await db.queueEntry.findUniqueOrThrow({ where: { id: waiting.id } });
       assert.equal(after.state, 'WAITING');
       assert.equal(after.closedAt, null);
+    });
+
+    await t.test('un fallo después de procesar el vencimiento revierte el cierre para reintentar', async () => {
+      const target = await book();
+      const owner = await user();
+      const expired = await db.loan.create({ data: { userId: owner.id, bookId: target.id,
+        startedAt: at(-481), dueAt: at(-1) } });
+      const failing = {
+        $transaction: ((operation, options) => db.$transaction(async tx => {
+          await operation(tx);
+          throw new Error('fallo-de-prueba-tras-cerrar');
+        }, options)) as PrismaClient['$transaction'],
+      };
+      await assert.rejects(new CirculationRepository(failing).findOccupancy([target.id]), /fallo-de-prueba/);
+      assert.equal((await db.loan.findUniqueOrThrow({ where: { id: expired.id } })).closedAt, null);
+      await availability(target.id);
+      const retried = await db.loan.findUniqueOrThrow({ where: { id: expired.id } });
+      assert.ok(retried.closedAt);
+      assert.ok(retried.closedAt >= retried.dueAt);
     });
   } finally {
     await fixture.close();

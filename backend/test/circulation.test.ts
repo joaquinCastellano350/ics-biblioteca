@@ -12,7 +12,7 @@ test('una consulta vacía de disponibilidad no accede a PostgreSQL', async () =>
   assert.deepEqual(await new CirculationController(repository).findAvailability([]), []);
 });
 
-test('la base compartida calcula cupos solicitables con PostgreSQL real en memoria', async (t) => {
+test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL real en memoria', async (t) => {
   const fixture = await catalogDatabase();
   const db = fixture.client;
   const repository = new CirculationRepository(db);
@@ -53,7 +53,13 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
       await db.loan.create({ data: { userId: closed!.id, bookId: target.id, startedAt: at(-482), dueAt: at(-2), closedAt: at(-1) } });
       await db.loan.create({ data: { userId: future!.id, bookId: target.id, startedAt: at(1), dueAt: at(481) } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 3 }]);
-      assert.equal((await db.loan.findUniqueOrThrow({ where: { id: stale.id } })).closedAt, null);
+      const processed = await db.loan.findUniqueOrThrow({ where: { id: stale.id } });
+      assert.ok(processed.closedAt);
+      assert.ok(processed.closedAt >= processed.dueAt);
+      assert.equal(processed.dueAt.getTime(), stale.dueAt.getTime());
+      const [processedAt] = await db.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
+      assert.ok(processed.closedAt <= processedAt!.now);
+      assert.ok(processedAt!.now.getTime() - processed.closedAt.getTime() < 10_000);
     });
 
     await t.test('descuenta reservas HELD vigentes, no vencidas ni terminales', async () => {
@@ -126,4 +132,65 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
   } finally {
     await fixture.close();
   }
+});
+
+test('procesa vencimientos en el límite exacto y conserva dueAt e idempotencia', async (t) => {
+  const fixture = await catalogDatabase();
+  t.after(() => fixture.close());
+  const db = fixture.client;
+  const repository = new CirculationRepository(db);
+  const university = await db.university.create({ data: { name: 'Universidad de prueba' } });
+  const user = await db.user.create({ data: { firstName: 'Ana', lastName: 'Prueba', email: 'limite-vencimiento@example.org',
+    passwordHash: 'fixture', universityId: university.id } });
+  const book = await db.book.create({ data: { title: 'Límite', titleSearch: 'limite', pdfObjectKey: 'privado.pdf', totalCopies: 1 } });
+  const dueAt = new Date('2026-10-31T12:00:00.000Z');
+  const loan = await db.loan.create({ data: { userId: user.id, bookId: book.id,
+    startedAt: new Date(dueAt.getTime() - 480 * 3_600_000), dueAt } });
+  const at = (now: Date) => db.$transaction(tx => repository.findOccupancyInTransaction(tx, [book.id], now));
+
+  const before = await at(new Date(dueAt.getTime() - 1));
+  assert.equal(before[0]?.activeLoans, 1);
+  assert.equal((await db.loan.findUniqueOrThrow({ where: { id: loan.id } })).closedAt, null);
+
+  const exact = await at(dueAt);
+  assert.equal(exact[0]?.activeLoans, 0);
+  assert.equal(exact[0]?.eligibleWaiters, 0);
+  const closedAtBoundary = await db.loan.findUniqueOrThrow({ where: { id: loan.id } });
+  assert.equal(closedAtBoundary.closedAt?.getTime(), dueAt.getTime());
+  assert.equal(closedAtBoundary.dueAt.getTime(), dueAt.getTime());
+
+  await at(new Date(dueAt.getTime() + 15 * 60_000));
+  const replayed = await db.loan.findUniqueOrThrow({ where: { id: loan.id } });
+  assert.deepEqual(replayed.closedAt, closedAtBoundary.closedAt);
+  assert.equal(replayed.dueAt.getTime(), dueAt.getTime());
+});
+
+test('el punto HU-06 recibe el cupo liberado dentro de la transacción, sin crear una oferta en HU-08', async (t) => {
+  const fixture = await catalogDatabase();
+  t.after(() => fixture.close());
+  const db = fixture.client;
+  const university = await db.university.create({ data: { name: 'Universidad de prueba' } });
+  const user = await db.user.create({ data: { firstName: 'Ana', lastName: 'Prueba', email: 'integracion-vencimiento@example.org',
+    passwordHash: 'fixture', universityId: university.id } });
+  const book = await db.book.create({ data: { title: 'Integración', titleSearch: 'integracion', pdfObjectKey: 'privado.pdf', totalCopies: 1 } });
+  const [clock] = await db.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
+  const dueAt = new Date(clock!.now.getTime() - 1_000);
+  const loan = await db.loan.create({ data: { userId: user.id, bookId: book.id,
+    startedAt: new Date(dueAt.getTime() - 480 * 3_600_000), dueAt } });
+  await db.queueEntry.create({ data: { userId: (await db.user.create({ data: { firstName: 'Bea', lastName: 'Prueba', email: 'en-espera-vencimiento@example.org',
+    passwordHash: 'fixture', universityId: university.id } })).id, bookId: book.id } });
+  const calls: { bookId: string; processedAt: Date }[] = [];
+  const repository = new CirculationRepository(db, { handle: async (tx, bookId, processedAt) => {
+    assert.ok(tx);
+    calls.push({ bookId, processedAt });
+  } });
+
+  const [occupancy] = await repository.findOccupancy([book.id]);
+  assert.equal(occupancy?.eligibleWaiters, 1);
+  assert.equal((await db.loan.findUniqueOrThrow({ where: { id: loan.id } })).closedAt?.getTime(), calls[0]?.processedAt.getTime());
+  assert.deepEqual(calls.map(call => call.bookId), [book.id]);
+  assert.equal(await db.reservation.count({ where: { bookId: book.id } }), 0);
+  assert.equal(await db.queueEntry.count({ where: { bookId: book.id, state: 'WAITING' } }), 1);
+  await repository.findOccupancy([book.id]);
+  assert.equal(calls.length, 1, 'el cupo vencido no vuelve a notificarse al punto de integración');
 });

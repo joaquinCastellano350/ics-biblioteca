@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import type { BookOccupancy } from './circulation.js';
 import type { CirculationRepositoryInterface } from './circulation-repository-interface.js';
+import { preserveQueuePriority, type ReleasedCapacityHandler } from './released-capacity-handler.js';
 
 export function retryable(error: unknown): boolean {
   const pending: unknown[] = [error];
@@ -17,7 +18,10 @@ export function retryable(error: unknown): boolean {
 }
 
 export class CirculationRepository implements CirculationRepositoryInterface {
-  constructor(private readonly database: Pick<PrismaClient, '$transaction'>) {}
+  constructor(
+    private readonly database: Pick<PrismaClient, '$transaction'>,
+    private readonly releasedCapacity: ReleasedCapacityHandler = preserveQueuePriority,
+  ) {}
 
   async findOccupancy(bookIds: readonly string[]): Promise<readonly BookOccupancy[]> {
     const ids = [...new Set(bookIds)].sort();
@@ -43,6 +47,20 @@ export class CirculationRepository implements CirculationRepositoryInterface {
     `);
     const [clock] = now ? [{ now }] : await transaction.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
     if (!clock || !Number.isFinite(clock.now.getTime())) throw new Error('No se pudo obtener la hora de PostgreSQL.');
+    const expiredLoans = await transaction.loan.findMany({
+      where: { bookId: { in: [...ids] }, closedAt: null, dueAt: { lte: clock.now } },
+      select: { id: true, bookId: true },
+      orderBy: [{ bookId: 'asc' }, { id: 'asc' }],
+    });
+    if (expiredLoans.length) {
+      await transaction.loan.updateMany({
+        where: { id: { in: expiredLoans.map(loan => loan.id) }, closedAt: null, dueAt: { lte: clock.now } },
+        data: { closedAt: clock.now },
+      });
+      for (const bookId of [...new Set(expiredLoans.map(loan => loan.bookId))]) {
+        await this.releasedCapacity.handle(transaction, bookId, clock.now);
+      }
+    }
     const activeLoan: Prisma.LoanWhereInput = {
       closedAt: null, startedAt: { lte: clock.now }, dueAt: { gt: clock.now },
     };
