@@ -65,8 +65,8 @@ test('préstamo directo: reglas persistidas y avisos atómicos', async t => {
       const processed = await db.loan.findUniqueOrThrow({ where: { id: expired.id } });
       assert.ok(processed.closedAt);
       assert.ok(processed.closedAt >= processed.dueAt);
-      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: waiting.id } })).state, 'WAITING');
-      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 0);
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: waiting.id } })).state, 'OFFERED');
+      assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'HELD' } }), 1);
       assert.equal(await db.loan.count({ where: { bookId: target.id, dueAt: { gt: processed.closedAt } } }), 0);
     });
     await t.test('respeta reserva vigente, espera ajena y espera propia', async () => {

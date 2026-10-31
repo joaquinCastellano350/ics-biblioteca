@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { CirculationController } from '../src/circulation/circulation-controller.js';
 import { CirculationRepository } from '../src/circulation/circulation-repository.js';
+import { Prisma, type PrismaClient } from '../src/generated/prisma/client.js';
+import { reconcileBooks } from '../src/circulation/reconcile-books.js';
 import { catalogDatabase } from './catalog-database.js';
 
 test('una consulta vacía de disponibilidad no accede a PostgreSQL', async () => {
@@ -62,7 +64,7 @@ test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL rea
       assert.ok(processedAt!.now.getTime() - processed.closedAt.getTime() < 10_000);
     });
 
-    await t.test('descuenta reservas HELD vigentes, no vencidas ni terminales', async () => {
+    await t.test('concilia reservas vencidas y solo cuenta HELD vigentes', async () => {
       const target = await book();
       const states = ['HELD', 'HELD', 'CONSUMED', 'CANCELLED', 'REJECTED_LIMIT', 'EXPIRED'] as const;
       for (const [index, state] of states.entries()) {
@@ -75,12 +77,13 @@ test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL rea
           ...(state === 'HELD' ? {} : { closedAt: at(0) }),
         } });
       }
-      const before = await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 3 }]);
-      assert.deepEqual(await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } }), before);
+      const after = await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } });
+      assert.equal(after.filter(reservation => reservation.state === 'EXPIRED').length, 2);
+      assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'EXPIRED' } }), 1);
     });
 
-    await t.test('la cola elegible retiene solo los cupos que necesita y no crea reservas', async () => {
+    await t.test('la conciliación ofrece los cupos libres a la cola y persiste las reservas', async () => {
       const target = await book(3);
       const waiting = await Promise.all([user(), user()]);
       for (const person of waiting) {
@@ -91,8 +94,8 @@ test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL rea
         userId: terminalPerson.id, bookId: target.id, joinedAt: at(-1), state: 'CANCELLED', closedAt: at(0),
       } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 3, availableCopies: 1 }]);
-      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 0);
-      assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'WAITING' } }), 2);
+      assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'HELD' } }), 2);
+      assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'OFFERED' } }), 2);
     });
 
     await t.test('una espera con cinco préstamos vigentes no retiene capacidad para un turno', async () => {
@@ -134,27 +137,38 @@ test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL rea
   }
 });
 
-test('procesa vencimientos en el límite exacto y conserva dueAt e idempotencia', async (t) => {
+test('la conciliación procesa antes, exactamente y después de dueAt de forma idempotente', async (t) => {
   const fixture = await catalogDatabase();
   t.after(() => fixture.close());
   const db = fixture.client;
-  const repository = new CirculationRepository(db);
   const university = await db.university.create({ data: { name: 'Universidad de prueba' } });
   const user = await db.user.create({ data: { firstName: 'Ana', lastName: 'Prueba', email: 'limite-vencimiento@example.org',
     passwordHash: 'fixture', universityId: university.id } });
   const book = await db.book.create({ data: { title: 'Límite', titleSearch: 'limite', pdfObjectKey: 'privado.pdf', totalCopies: 1 } });
-  const dueAt = new Date('2026-10-31T12:00:00.000Z');
+  const [clock] = await db.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
+  const dueAt = new Date(clock!.now.getTime() + 60_000);
   const loan = await db.loan.create({ data: { userId: user.id, bookId: book.id,
     startedAt: new Date(dueAt.getTime() - 480 * 3_600_000), dueAt } });
-  const at = (now: Date) => db.$transaction(tx => repository.findOccupancyInTransaction(tx, [book.id], now));
+  const at = (now: Date) => db.$transaction(tx => {
+    const rawQuery = tx.$queryRaw.bind(tx);
+    const withClock = new Proxy(tx, {
+      get(target, property, receiver) {
+        if (property === '$queryRaw') return ((query: TemplateStringsArray, ...values: unknown[]) => {
+          if (Array.isArray(query) && query.join('').includes('clock_timestamp()')) return Promise.resolve([{ now }]);
+          return rawQuery(query, ...values);
+        }) as typeof tx.$queryRaw;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    return reconcileBooks(withClock, [book.id]);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   const before = await at(new Date(dueAt.getTime() - 1));
-  assert.equal(before[0]?.activeLoans, 1);
+  assert.equal(before.occupancy[0]?.activeLoans, 1);
   assert.equal((await db.loan.findUniqueOrThrow({ where: { id: loan.id } })).closedAt, null);
 
   const exact = await at(dueAt);
-  assert.equal(exact[0]?.activeLoans, 0);
-  assert.equal(exact[0]?.eligibleWaiters, 0);
+  assert.equal(exact.occupancy[0]?.activeLoans, 0);
   const closedAtBoundary = await db.loan.findUniqueOrThrow({ where: { id: loan.id } });
   assert.equal(closedAtBoundary.closedAt?.getTime(), dueAt.getTime());
   assert.equal(closedAtBoundary.dueAt.getTime(), dueAt.getTime());
@@ -165,7 +179,7 @@ test('procesa vencimientos en el límite exacto y conserva dueAt e idempotencia'
   assert.equal(replayed.dueAt.getTime(), dueAt.getTime());
 });
 
-test('el punto HU-06 recibe el cupo liberado dentro de la transacción, sin crear una oferta en HU-08', async (t) => {
+test('al vencer, reconcileBooks ofrece el cupo y deja persistida la reserva de turno', async (t) => {
   const fixture = await catalogDatabase();
   t.after(() => fixture.close());
   const db = fixture.client;
@@ -179,18 +193,11 @@ test('el punto HU-06 recibe el cupo liberado dentro de la transacción, sin crea
     startedAt: new Date(dueAt.getTime() - 480 * 3_600_000), dueAt } });
   await db.queueEntry.create({ data: { userId: (await db.user.create({ data: { firstName: 'Bea', lastName: 'Prueba', email: 'en-espera-vencimiento@example.org',
     passwordHash: 'fixture', universityId: university.id } })).id, bookId: book.id } });
-  const calls: { bookId: string; processedAt: Date }[] = [];
-  const repository = new CirculationRepository(db, { handle: async (tx, bookId, processedAt) => {
-    assert.ok(tx);
-    calls.push({ bookId, processedAt });
-  } });
-
-  const [occupancy] = await repository.findOccupancy([book.id]);
-  assert.equal(occupancy?.eligibleWaiters, 1);
-  assert.equal((await db.loan.findUniqueOrThrow({ where: { id: loan.id } })).closedAt?.getTime(), calls[0]?.processedAt.getTime());
-  assert.deepEqual(calls.map(call => call.bookId), [book.id]);
-  assert.equal(await db.reservation.count({ where: { bookId: book.id } }), 0);
-  assert.equal(await db.queueEntry.count({ where: { bookId: book.id, state: 'WAITING' } }), 1);
-  await repository.findOccupancy([book.id]);
-  assert.equal(calls.length, 1, 'el cupo vencido no vuelve a notificarse al punto de integración');
+  const [availability] = await new CirculationController(new CirculationRepository(db)).findAvailability([book.id]);
+  assert.equal(availability?.availableCopies, 0);
+  const closedLoan = await db.loan.findUniqueOrThrow({ where: { id: loan.id } });
+  assert.ok(closedLoan.closedAt && closedLoan.closedAt >= closedLoan.dueAt);
+  assert.equal(closedLoan.dueAt.getTime(), dueAt.getTime());
+  assert.equal(await db.reservation.count({ where: { bookId: book.id, state: 'HELD' } }), 1);
+  assert.equal(await db.queueEntry.count({ where: { bookId: book.id, state: 'OFFERED' } }), 1);
 });

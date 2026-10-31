@@ -78,8 +78,8 @@ export class QueueRepository implements QueueRepositoryInterface {
     }
     if (await tx.loan.count({ where: { ...active, userId } }) >= 5) return { code: 'LOAN_LIMIT_REACHED' };
 
-    // Solo lecturas del libro solicitado. No invocar findOccupancyInTransaction:
-    // puede cerrar entradas y no representa la conciliación completa.
+    // El ingreso detecta trabajo pendiente y devuelve un resultado reintentable;
+    // la conciliación completa se ejecuta por su propio flujo de circulación.
     const loans = await tx.loan.count({ where: { ...active, bookId } });
     const held = await tx.reservation.count({ where: { bookId, state: 'HELD', closedAt: null, expiresAt: { gt: now } } });
     const capacity = book.totalCopies - loans - held;
