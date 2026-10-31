@@ -11,7 +11,7 @@ export class ResendEmailSender implements EmailSender {
         method: 'POST', signal: AbortSignal.timeout(15_000),
         headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json',
           'Idempotency-Key': message.idempotencyKey },
-        body: JSON.stringify({ from: this.from, to: [message.to], subject: message.subject, text: message.text }),
+        body: JSON.stringify({ from: this.from, to: [message.to], subject: message.subject, text: message.text, html: message.html }),
       });
     } catch { throw new EmailDeliveryError('RESEND_NETWORK_ERROR'); }
     if (!response.ok) {

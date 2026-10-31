@@ -163,9 +163,19 @@ adelantar una release ni integrar código sin review.
 
 Antes de aceptar esta propuesta quedan por revisar la ventana de 23 horas,
 la recuperación manual, los avisos atrasados y la estabilidad del contenido.
-Falta validar contención con varias conexiones a PostgreSQL y acordar cómo
-detectar avisos fallidos: un comando exitoso no significa que todos se entregaron.
+La [suite de integración](../scrum-28-pruebas.md) verifica bloqueo de filas,
+emisores simultáneos y recuperación con varias conexiones a PostgreSQL local.
+Queda por acordar cómo detectar avisos fallidos: un comando exitoso no significa
+que todos se entregaron.
 El código tampoco incorpora todavía un limitador de ritmo ni respeta `Retry-After`.
+
+Los cinco tipos de aviso comparten una plantilla HTML versionada, con estilos
+inline y alternativa de texto. Todas las variables se escapan antes de insertarlas.
+La presentación no cambia las reglas de circulación ni la clave de deduplicación.
+Un despliegue que cambia la plantilla también cambia el cuerpo enviado al
+proveedor: antes de activarlo deben revisarse los avisos ya intentados y de
+resultado incierto, porque reutilizar su clave con otro cuerpo no es un reintento
+idéntico. La apariencia en distintos clientes de correo requiere validación visual.
 
 La [guía de SCRUM-28](../scrum-28-avisos.md) conserva detalles de implementación,
 configuración y pruebas. SCRUM-26 debe programar los avisos al conceder el préstamo

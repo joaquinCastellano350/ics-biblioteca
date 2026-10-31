@@ -9,13 +9,15 @@ import { scheduleLoanNotifications } from '../src/notifications/schedule-loan-no
 import { catalogDatabase } from './catalog-database.js';
 
 test('Resend: HTTPS, idempotencia, errores controlados y tiempo acotado', async () => {
-  const message = { to: 'destino@example.org', subject: 'Préstamo', text: 'Libro y vencimiento', idempotencyKey: 'loan:uuid:expired' };
+  const message = { to: 'destino@example.org', subject: 'Préstamo', text: 'Libro y vencimiento',
+    html: '<p>Libro y vencimiento</p>', idempotencyKey: 'loan:uuid:expired' };
   const request: typeof fetch = async (url, options) => {
     assert.equal(url, 'https://api.resend.com/emails');
     assert.equal(options?.method, 'POST');
     assert.ok(options?.signal);
     assert.deepEqual(options?.headers, { Authorization: 'Bearer fixture', 'Content-Type': 'application/json', 'Idempotency-Key': message.idempotencyKey });
-    assert.deepEqual(JSON.parse(String(options?.body)), { from: 'biblioteca@example.org', to: [message.to], subject: message.subject, text: message.text });
+    assert.deepEqual(JSON.parse(String(options?.body)), { from: 'biblioteca@example.org', to: [message.to],
+      subject: message.subject, text: message.text, html: message.html });
     return Response.json({ id: 'provider-id' });
   };
   assert.equal(await new ResendEmailSender('fixture', 'biblioteca@example.org', request).send(message), 'provider-id');
@@ -100,7 +102,8 @@ test('SCRUM-28: programación, entrega durable y recuperación con PostgreSQL ai
         assert.ok(message.text.includes(loan.dueAt.toISOString()));
         assert.ok(message.text.includes('UTC'));
         assert.ok(message.text.includes('https://biblioteca.example.org/prestamos'));
-        assert.ok(message.text.includes('puede retrasarse'));
+        assert.ok(!message.text.includes('puede retrasarse'));
+        assert.ok(!message.html.includes('puede retrasarse'));
         assert.ok(!message.text.includes('private.pdf'));
       }
       assert.ok(messages[2]?.text.includes('El acceso de lectura finalizó'));

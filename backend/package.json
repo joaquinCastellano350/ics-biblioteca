@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm run db:generate && tsx watch src/server.ts",
-    "build": "npm run db:generate && tsc -p tsconfig.json",
+    "build": "npm run db:generate && tsc -p tsconfig.json && node scripts/copy-notification-template.mjs",
     "start": "node dist/server.js",
     "test": "npm run db:generate && tsx --test test/*.test.ts",
     "db:generate": "prisma generate",
@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "test:integration": "tsx --test test/integration/accounts.integration.test.ts",
+    "test:notifications:integration": "npm run db:generate && tsx --test test/integration/notifications.integration.test.ts",
     "check:services": "tsx scripts/check-services.ts",
     "notifications:deliver": "tsx src/notifications/deliver-notifications.ts"
   },

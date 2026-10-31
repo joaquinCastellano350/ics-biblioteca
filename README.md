@@ -112,4 +112,5 @@ correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
 - [Desarrollo y verificación de SCRUM-8](docs/desarrollo-scrum-8.md).
 - [ADR-0002: origen web común aceptado](docs/adr/0002-sesion-y-origen-web.md).
 - [ADR-0003 propuesto: notificaciones con outbox y entrega externa](docs/adr/0003-notificaciones-outbox-y-entrega.md).
+- [Pruebas automatizadas de notificaciones y plantilla HTML](docs/scrum-28-pruebas.md).
 - [Registro de verificación de la puesta en marcha](docs/verificacion-inicial.md).

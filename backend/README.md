@@ -14,6 +14,13 @@ horario se habilita con `NOTIFICATIONS_ENABLED=true` después de configurar sus
 secretos. Los reintentos conservan la clave; fuera de la ventana segura del
 proveedor quedan para revisión sin provocar un segundo envío automático.
 
+Los cinco avisos comparten la [plantilla HTML](src/notifications/templates/notification.html)
+de UniRead, con alternativa de texto y escape de variables. El build copia la
+plantilla junto al código compilado. La [guía de pruebas de SCRUM-28](../docs/scrum-28-pruebas.md)
+documenta los escenarios de recuperación y concurrencia con PostgreSQL local;
+`npm run test:notifications:integration --workspace backend` exige un destino
+exclusivo de prueba y no utiliza la conexión de Neon ni envía correos reales.
+
 Requiere Node.js 24.15 o superior dentro de la rama 24 y npm 11 o superior. Instalar desde la raíz con `npm ci`.
 
 ## Variables de entorno
