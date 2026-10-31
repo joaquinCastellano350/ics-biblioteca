@@ -23,6 +23,19 @@ jobs:
       CI: 'true'
       PLAYWRIGHT_CHANNEL: chromium
     services:
+      notifications-postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ics_notifications_test
+          POSTGRES_USER: notifications_test_admin
+          POSTGRES_PASSWORD: notifications_ci_only
+        ports:
+          - 55434:5432
+        options: >-
+          --health-cmd "pg_isready -U notifications_test_admin -d ics_notifications_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       postgres:
         image: postgres:17
         env:
@@ -65,6 +78,12 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://accounts_test_admin:accounts_ci_only@127.0.0.1:55432/ics_accounts_test
           ACCOUNTS_ALLOW_INTEGRATION_WRITES: '1'
+
+      - name: Run notification integration with isolated PostgreSQL
+        run: npm run test:notifications:integration --workspace backend
+        env:
+          TEST_NOTIFICATIONS_DATABASE_URL: postgresql://notifications_test_admin:notifications_ci_only@127.0.0.1:55434/ics_notifications_test
+          NOTIFICATIONS_ALLOW_INTEGRATION_WRITES: '1'
 
       - name: Build production applications
         run: npm run build

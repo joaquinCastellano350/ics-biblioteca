@@ -6,6 +6,21 @@ SCRUM-22 agrega el [acceso firmado al PDF de un préstamo vigente](../docs/scrum
 en `POST /api/loans/:loanId/read-access`. Reutiliza las credenciales de almacenamiento
 y las tablas existentes; no aplica migraciones ni crea préstamos.
 
+SCRUM-28 incorpora los [recordatorios durables de préstamos](../docs/scrum-28-avisos.md).
+`npm run notifications:deliver --workspace backend` procesa hasta 20 avisos con
+Resend desde un proceso externo. Requiere la migración `notification_delivery_window`,
+`DATABASE_URL`, `RESEND_API_KEY`, `MAIL_FROM` y `PUBLIC_WEB_ORIGIN`. El workflow
+horario se habilita con `NOTIFICATIONS_ENABLED=true` después de configurar sus
+secretos. Los reintentos conservan la clave; fuera de la ventana segura del
+proveedor quedan para revisión sin provocar un segundo envío automático.
+
+Los cinco avisos comparten la [plantilla HTML](src/notifications/templates/notification.html)
+de UniRead, con alternativa de texto y escape de variables. El build copia la
+plantilla junto al código compilado. La [guía de pruebas de SCRUM-28](../docs/scrum-28-pruebas.md)
+documenta los escenarios de recuperación y concurrencia con PostgreSQL local;
+`npm run test:notifications:integration --workspace backend` exige un destino
+exclusivo de prueba y no utiliza la conexión de Neon ni envía correos reales.
+
 Requiere Node.js 24.15 o superior dentro de la rama 24 y npm 11 o superior. Instalar desde la raíz con `npm ci`.
 
 ## Variables de entorno
