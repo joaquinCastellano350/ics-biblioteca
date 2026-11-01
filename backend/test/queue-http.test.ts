@@ -6,17 +6,20 @@ import { createApp } from '../src/app.js';
 import { AccountsService } from '../src/accounts/accounts.service.js';
 import type { AccountsRepository } from '../src/accounts/accounts.repository.js';
 import { tokenHash } from '../src/accounts/sessions.js';
-import type { QueueFailure, QueueResult } from '../src/circulation/queue.js';
+import type { QueueCancellationFailure, QueueCancellationResult, QueueFailure, QueueResult } from '../src/circulation/queue.js';
 
 const bookId = '22222222-2222-4222-8222-222222222222';
 const now = new Date('2026-10-29T12:00:00Z');
 const later = new Date(now.getTime() + 3_600_000);
 const tokens = { ana: 'a'.repeat(43), bea: 'b'.repeat(43) };
+const entryId = '44444444-4444-4444-8444-444444444444';
 
 async function fixture(t: TestContext, options: {
   code?: QueueFailure; state?: 'WAITING' | 'OFFERED'; existing?: boolean; error?: unknown; sessionError?: unknown;
+  cancelCode?: QueueCancellationFailure; cancelError?: unknown; cancelOwner?: 'ana' | 'bea';
 } = {}) {
   const calls: Array<{ userId: string; bookId: string }> = [];
+  const cancelCalls: Array<{ userId: string; entryId: string }> = [];
   let sessionState: 'valid' | 'expired' | 'revoked' = 'valid';
   const unused = async (): Promise<never> => { throw new Error('Dependencia inesperada'); };
   const repository: AccountsRepository = {
@@ -44,6 +47,12 @@ async function fixture(t: TestContext, options: {
       return { serverTime: now, created: !options.existing,
         entry: options.state === 'OFFERED' ? { ...entry, state: 'OFFERED', position: null }
           : { ...entry, state: 'WAITING', position: 3 } };
+    }, async cancelQueue(userId, requestedEntry): Promise<QueueCancellationResult> {
+      cancelCalls.push({ userId, entryId: requestedEntry });
+      if (options.cancelError) throw options.cancelError;
+      if (requestedEntry !== entryId || userId !== (options.cancelOwner ?? 'ana')) return { code: 'QUEUE_ENTRY_NOT_FOUND' };
+      if (options.cancelCode) return { code: options.cancelCode };
+      return { closed: true };
     } },
     loans: { async requestLoan() { return { code: 'NO_AVAILABLE_COPIES' }; } },
     circulationQueries: { async findPersonalCirculation() { return { serverTime: now, loans: [], waits: [], reservations: [],
@@ -55,7 +64,7 @@ async function fixture(t: TestContext, options: {
   });
   await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  return { calls, base,
+  return { calls, cancelCalls, base,
     setSessionState(value: typeof sessionState) { sessionState = value; },
     post(body: string = JSON.stringify({ bookId }), headers: Record<string, string> = {}) {
       return fetch(`${base}/api/queue-entries`, { method: 'POST', body,
@@ -76,6 +85,128 @@ test('HTTP 201: contrato público, fechas ISO, no-store y ninguna cookie ni dato
     assert.equal(JSON.stringify(body).includes(forbidden), false);
   }
   assert.deepEqual(f.calls, [{ userId: 'ana', bookId }]);
+});
+
+test('cancelación HTTP: 204 vacío, no-store, sin cookie y titular exclusivamente de sesión', async t => {
+  for (const owner of ['ana', 'bea'] as const) {
+    const f = await fixture(t, { cancelOwner: owner });
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel?userId=otra-cuenta`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1',
+        Cookie: `biblioteca_session=${tokens[owner]}`, 'X-User-Id': 'otra-cuenta' }, body: '{}',
+    });
+    assert.equal(response.status, 204); assert.equal(await response.text(), '');
+    assert.equal(response.headers.get('cache-control'), 'no-store'); assert.equal(response.headers.get('set-cookie'), null);
+    assert.deepEqual(f.cancelCalls, [{ userId: owner, entryId }]); assert.deepEqual(f.calls, []);
+  }
+});
+
+test('cancelación HTTP: ajena e inexistente tienen exactamente el mismo 404', async t => {
+  const f = await fixture(t);
+  const cancel = (id: string, token: string) => fetch(`${f.base}/api/queue-entries/${id}/cancel`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${token}` }, body: '{}',
+  });
+  const foreign = await cancel(entryId, tokens.bea);
+  const missing = await cancel(bookId, tokens.ana);
+  assert.equal(foreign.status, 404); assert.equal(missing.status, 404);
+  assert.deepEqual(await foreign.json(), await missing.json());
+});
+
+test('cancelación HTTP no necesita datos en el cuerpo: acepta ausencia, vacío y {}', async t => {
+  const f = await fixture(t);
+  for (const body of [undefined, '', '{}']) {
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${tokens.ana}` },
+      ...(body === undefined ? {} : { body }),
+    });
+    assert.equal(response.status, 204); assert.equal(await response.text(), '');
+    assert.equal(response.headers.get('cache-control'), 'no-store'); assert.equal(response.headers.get('set-cookie'), null);
+  }
+  assert.deepEqual(f.cancelCalls, Array.from({ length: 3 }, () => ({ userId: 'ana', entryId })));
+  assert.deepEqual(f.calls, []);
+});
+
+for (const body of ['null', '[]', '"texto"', '{', '{"userId":"bea"}', '{"bookId":"otro"}']) {
+  test(`cancelación HTTP: rechaza propiedades adicionales o JSON inválido (${body})`, async t => {
+    const f = await fixture(t);
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${tokens.ana}` }, body,
+    });
+    assert.equal(response.status, 400); assert.equal((await response.json()).error.code, 'VALIDATION_ERROR');
+    assert.deepEqual(f.cancelCalls, []);
+  });
+}
+
+test('cancelación HTTP: UUID inválido no alcanza persistencia', async t => {
+  const f = await fixture(t);
+  const response = await fetch(`${f.base}/api/queue-entries/no-uuid/cancel`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${tokens.ana}` }, body: '{}' });
+  assert.equal(response.status, 400); assert.deepEqual(f.cancelCalls, []);
+});
+
+for (const protection of ['', '0', 'true']) {
+  test('cancelación HTTP: protección ausente/incorrecta devuelve 403', async t => {
+    const f = await fixture(t);
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(protection ? { 'X-Biblioteca-Request': protection } : {}),
+        Cookie: `biblioteca_session=${tokens.ana}` }, body: '{}' });
+    assert.equal(response.status, 403); assert.deepEqual(f.cancelCalls, []);
+  });
+}
+
+for (const state of ['absent', 'malformed', 'unknown', 'expired', 'revoked'] as const) {
+  test(`cancelación HTTP: sesión ${state} devuelve 401 sin persistencia`, async t => {
+    const f = await fixture(t);
+    if (state === 'expired' || state === 'revoked') f.setSessionState(state);
+    const cookie = state === 'absent' ? '' : `biblioteca_session=${state === 'malformed' ? 'invalid' : state === 'unknown' ? 'z'.repeat(43) : tokens.ana}`;
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: cookie }, body: '{}' });
+    assert.equal(response.status, 401); assert.deepEqual(f.cancelCalls, []);
+  });
+}
+
+for (const code of ['QUEUE_ENTRY_FULFILLED', 'CIRCULATION_RECONCILIATION_REQUIRED'] as const) {
+  test(`cancelación HTTP: traduce ${code} sin informar éxito`, async t => {
+    const f = await fixture(t, { cancelCode: code });
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${tokens.ana}` }, body: '{}' });
+    assert.equal(response.status, code === 'QUEUE_ENTRY_FULFILLED' ? 409 : 503);
+    assert.equal((await response.json()).error.code, code); assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('set-cookie'), null);
+  });
+}
+
+for (const unavailable of [false, true]) {
+  test(`cancelación HTTP: error sanitizado de persistencia, dependencia no disponible=${unavailable}`, async t => {
+    const f = await fixture(t, { cancelError: unavailable ? { code: 'P1001', message: 'credencial privada' } : new Error('credencial privada') });
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${tokens.ana}` }, body: '{}' });
+    assert.equal(response.status, unavailable ? 503 : 500);
+    const body = await response.json(); assert.equal(body.error.code, unavailable ? 'SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR');
+    assert.equal(JSON.stringify(body).includes('credencial'), false); assert.equal(response.headers.get('set-cookie'), null);
+  });
+}
+
+test('cancelación HTTP: reintentos explícitos devuelven 204 y no invocan la inscripción', async t => {
+  const f = await fixture(t);
+  for (let i = 0; i < 2; i++) {
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${tokens.ana}` }, body: '{}' });
+    assert.equal(response.status, 204); assert.equal(await response.text(), '');
+  }
+  assert.equal(f.cancelCalls.length, 2); assert.deepEqual(f.calls, []);
+  assert.equal((await f.post()).status, 201);
+});
+
+test('cancelación HTTP conserva el requisito JSON y el límite de 16 KiB', async t => {
+  const f = await fixture(t);
+  for (const type of ['', 'text/plain']) {
+    const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, { method: 'POST',
+      headers: { ...(type ? { 'Content-Type': type } : {}), 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${tokens.ana}` }, body: '{}' });
+    assert.equal(response.status, 415);
+  }
+  const response = await fetch(`${f.base}/api/queue-entries/${entryId}/cancel`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1', Cookie: `biblioteca_session=${tokens.ana}` }, body: JSON.stringify({ large: 'x'.repeat(16384) }) });
+  assert.equal(response.status, 413); assert.deepEqual(f.cancelCalls, []);
 });
 
 test('titular exclusivamente desde sesión; ignora intentos de selección por URL y encabezados', async t => {

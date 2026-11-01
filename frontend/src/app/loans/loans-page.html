@@ -82,6 +82,10 @@
                 <article class="waiting-item">
                   <h3>{{ wait.book.title }}</h3>
                   <p>Tu posición en cola: <strong>{{ wait.position }}</strong></p>
+                  <p-button class="leave-queue-action" label="Salir de la cola" type="button" severity="secondary" variant="outlined"
+                    [ariaLabel]="'Salir de la cola de ' + wait.book.title" aria-controls="leave-queue-dialog"
+                    [disabled]="cancelPending() || auth.authenticating() || auth.loggingOut()"
+                    (onClick)="askToLeave(wait, $event)" />
                 </article>
               } @empty {
                 <p class="empty-state">No estás esperando ningún libro.</p>
@@ -96,3 +100,21 @@
     }
   </section>
 </main>
+<p-dialog id="leave-queue-dialog" header="Salir de la cola" [visible]="selectedWait() !== null" [modal]="true"
+  [style]="{ width: '470px', maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100dvh - 42px)' }"
+  [draggable]="false" [resizable]="false" [closable]="!cancelPending()" [closeOnEscape]="!cancelPending()"
+  closeAriaLabel="Cerrar confirmación de salida de la cola" (visibleChange)="!$event && dismissCancellation()"
+  (onShow)="focusKeepWaiting()" (onHide)="restoreCancellationFocus()">
+  @if (selectedWait(); as wait) {
+    <p class="leave-queue-description">¿Querés dejar de esperar <strong>{{ wait.book.title }}</strong>?
+      Si volvés a ingresar, se te asignará una nueva posición.</p>
+    @if (cancelError()) { <p-message severity="error">{{ cancelError() }}</p-message> }
+    <div class="leave-queue-actions">
+      <p-button data-keep-waiting label="Seguir esperando" type="button" severity="secondary" variant="outlined"
+        [fluid]="true" [disabled]="cancelPending()" (onClick)="dismissCancellation()" />
+      <p-button [label]="cancelPending() ? 'Saliendo…' : (cancelError() ? 'Reintentar salida' : 'Confirmar salida')"
+        type="button" [fluid]="true" [loading]="cancelPending()" [disabled]="cancelPending()"
+        (onClick)="confirmCancellation()" />
+    </div>
+  }
+</p-dialog>
