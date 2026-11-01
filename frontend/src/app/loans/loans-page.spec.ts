@@ -3,6 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter, Router } from '@angular/router';
 import { providePrimeNG } from 'primeng/config';
+import { By } from '@angular/platform-browser';
+import { Dialog } from 'primeng/dialog';
 import { App } from '../app';
 import { routes } from '../app.routes';
 import type { AuthResponse } from '../auth/auth.types';
@@ -61,7 +63,7 @@ describe('acceso a Mis préstamos', () => {
     await settle();
   }
   function button(label: string): HTMLButtonElement {
-    return Array.from(root.querySelectorAll<HTMLButtonElement>('app-loans-page button'))
+    return Array.from(root.querySelectorAll<HTMLButtonElement>(label === 'Salir de la cola' ? '.waiting-item button' : 'app-loans-page button'))
       .find(element => element.textContent?.trim() === label)!;
   }
 
@@ -141,7 +143,8 @@ describe('acceso a Mis préstamos', () => {
     expect(root.querySelector('.reserve-row time')?.getAttribute('datetime')).toBe(circulation.reservations[0].expiresAt);
     expect(root.querySelector('.reserve-row .remaining')?.textContent).toMatch(/1 h 59 min|2 h 0 min/);
     expect(root.querySelector('.reserve-row p-tag')).not.toBeNull();
-    expect(root.querySelector('.reserve-row button, .waiting-item button')).toBeNull();
+    expect(root.querySelector('.reserve-row button')?.getAttribute('aria-label')).toBe('Salir de la cola de Reserva de sistemas');
+    expect(button('Salir de la cola').getAttribute('aria-label')).toBe('Salir de la cola de Redes en espera');
     expect(root.querySelector('.loan-card app-read-book-button button')?.textContent).toContain('Leer online');
   });
 
@@ -253,4 +256,286 @@ describe('acceso a Mis préstamos', () => {
     await settle();
     expect(pending.cancelled).toBe(true);
   });
+
+  function cancellationDialog(): Dialog {
+    return fixture.debugElement.query(By.css('app-loans-page p-dialog')).componentInstance;
+  }
+
+  async function openCancellation() {
+    http.expectOne('/api/auth/session').flush(session);
+    await load();
+    const opener = button('Salir de la cola');
+    opener.focus(); opener.click(); await settle();
+    cancellationDialog().onShow.emit(undefined);
+    return opener;
+  }
+
+  it('confirma con PrimeNG y permite desistir sin POST, recuperando el foco', async () => {
+    const opener = await openCancellation();
+    expect(root.querySelector('app-loans-page [role="dialog"]')?.textContent).toContain('Redes en espera');
+    expect(document.activeElement).toBe(button('Seguir esperando'));
+    http.expectNone('/api/queue-entries/wait/cancel');
+    button('Seguir esperando').click(); await settle();
+    cancellationDialog().onHide.emit(undefined);
+    expect(document.activeElement).toBe(opener);
+    expect(root.textContent).toContain('Redes en espera');
+    http.expectNone('/api/queue-entries/wait/cancel');
+  });
+
+  it('el cierre por Escape conserva la espera y recupera el foco sin cancelar', async () => {
+    const opener = await openCancellation();
+    expect(cancellationDialog().closeOnEscape()).toBe(false);
+    button('Seguir esperando').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await settle();
+    cancellationDialog().onHide.emit(undefined);
+    expect(document.activeElement).toBe(opener);
+    expect(root.textContent).toContain('Redes en espera');
+    http.expectNone('/api/queue-entries/wait/cancel');
+  });
+
+  it('recupera el foco en la página si el control original queda deshabilitado', async () => {
+    const opener = await openCancellation();
+    opener.disabled = true;
+    button('Seguir esperando').click(); await settle();
+    cancellationDialog().onHide.emit(undefined);
+    expect(document.activeElement).toBe(root.querySelector('app-loans-page main'));
+    http.expectNone('/api/queue-entries/wait/cancel');
+  });
+
+  it('un cierre tardío no roba el foco a una confirmación nueva', async () => {
+    await openCancellation();
+    button('Seguir esperando').click(); await settle();
+    button('Salir de la cola').click(); await settle();
+    cancellationDialog().onShow.emit(undefined);
+    cancellationDialog().onHide.emit(undefined);
+    expect(document.activeElement).toBe(button('Seguir esperando'));
+    http.expectNone('/api/queue-entries/wait/cancel');
+  });
+
+  it('envía una sola cancelación, muestra carga y actualiza las esperas después del 204', async () => {
+    await openCancellation();
+    const confirm = button('Confirmar salida');
+    confirm.click(); confirm.click(); await settle();
+    const request = http.expectOne('/api/queue-entries/wait/cancel');
+    expect(button('Saliendo…').disabled).toBe(true);
+    expect(button('Saliendo…').querySelector('svg')).not.toBeNull();
+    expect(button('Seguir esperando').disabled).toBe(true);
+    expect(cancellationDialog().closeOnEscape()).toBe(false);
+    http.expectNone('/api/queue-entries/wait/cancel');
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await load({ ...circulation, waits: [], requestConstraints: { ...circulation.requestConstraints, openQueueBookIds: ['c'] } });
+    cancellationDialog().onHide.emit(undefined);
+    expect(root.querySelector('.waiting-item')).toBeNull();
+    expect(root.textContent).toContain('No estás esperando ningún libro.');
+    expect(root.textContent).toContain('Álgebra privada');
+    expect(root.textContent).toContain('Reserva de sistemas');
+    expect(document.activeElement).toBe(root.querySelector('app-loans-page main'));
+    expect(router.url).toBe(url);
+  });
+
+  it('un 503 conserva la espera, muestra p-message y permite reintentar explícitamente', async () => {
+    await openCancellation(); button('Confirmar salida').click();
+    http.expectOne('/api/queue-entries/wait/cancel').flush({ error: { code: 'CIRCULATION_RECONCILIATION_REQUIRED', message: 'detalle interno' } }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(root.querySelector('app-loans-page p-message')?.textContent).toContain('Esta espera necesita actualizarse');
+    expect(root.textContent).not.toContain('detalle interno');
+    expect(root.querySelector('.waiting-item')).not.toBeNull();
+    http.expectNone('/api/me/circulation');
+    button('Reintentar salida').click();
+    http.expectOne('/api/queue-entries/wait/cancel').flush(null, { status: 204, statusText: 'No Content' });
+    await load(empty);
+    expect(root.querySelector('app-loans-page p-message')).toBeNull();
+    expect(root.querySelector('.waiting-item')).toBeNull();
+  });
+
+  for (const change of ['logout', 'account']) {
+    it(`limpia la confirmación y cancela respuestas tardías tras ${change}`, async () => {
+      await openCancellation(); button('Confirmar salida').click();
+      const old = http.expectOne('/api/queue-entries/wait/cancel');
+      const auth = TestBed.inject(AuthService);
+      if (change === 'logout') {
+        auth.logout().subscribe(); http.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+      } else {
+        auth.restore(); http.expectOne('/api/auth/session').flush({ ...session, user: { ...session.user, id: 'bea' } });
+      }
+      await settle();
+      expect(old.cancelled).toBe(true);
+      expect(() => old.flush(null, { status: 204, statusText: 'No Content' })).toThrow();
+      expect(button('Confirmar salida')).toBeUndefined();
+      expect(root.textContent).not.toContain('Redes en espera');
+      if (change === 'account') await load(empty);
+      else http.expectNone('/api/me/circulation');
+      expect(router.url).toBe(url);
+    });
+  }
+
+  it('limpia errores al descartar la confirmación y conserva la salida independiente de reservas', async () => {
+    await openCancellation(); button('Confirmar salida').click();
+    http.expectOne('/api/queue-entries/wait/cancel').flush({}, { status: 503, statusText: 'Unavailable' });
+    await settle(); button('Seguir esperando').click(); await settle();
+    button('Salir de la cola').click(); await settle();
+    expect(root.querySelector('app-loans-page p-message')).toBeNull();
+    expect(root.querySelector('.reserve-row button')).not.toBeNull();
+    expect(button('Confirmar salida').disabled).toBe(false);
+  });
+
+  async function openReservationCancellation() {
+    http.expectOne('/api/auth/session').flush(session);
+    await load();
+    const opener = root.querySelector<HTMLButtonElement>('.reserve-row p-button button')!;
+    opener.focus(); opener.click(); await settle();
+    cancellationDialog().onShow.emit(undefined);
+    return opener;
+  }
+
+  it('ofrece salir de la reserva propia y explica la pérdida del turno con confirmación accesible', async () => {
+    const opener = await openReservationCancellation();
+    expect(opener.getAttribute('aria-label')).toBe('Salir de la cola de Reserva de sistemas');
+    expect(opener.type).toBe('button');
+    const dialog = root.querySelector('app-loans-page [role="dialog"]')!;
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('aria-labelledby')).toBeTruthy();
+    expect(dialog.textContent).toContain('abandonar tu turno');
+    expect(dialog.textContent).toContain('Reserva de sistemas');
+    expect(dialog.textContent).toContain('perdés este turno y liberás el cupo');
+    expect(dialog.textContent).not.toContain('¿Querés dejar de esperar');
+    expect(document.activeElement).toBe(button('Conservar turno'));
+    http.expectNone('/api/queue-entries/offer/cancel');
+    button('Conservar turno').click(); await settle();
+    cancellationDialog().onHide.emit(undefined);
+    expect(document.activeElement).toBe(opener);
+    expect(root.querySelector('.reserve-row')).not.toBeNull();
+    http.expectNone('/api/queue-entries/offer/cancel');
+  });
+
+  it('cerrar la confirmación de reserva no envía POST y conserva el foco original', async () => {
+    const opener = await openReservationCancellation();
+    cancellationDialog().close(new Event('click')); await settle();
+    cancellationDialog().onHide.emit(undefined);
+    expect(document.activeElement).toBe(opener);
+    expect(button('Conservar turno')).toBeUndefined();
+    expect(root.querySelector('.reserve-row')).not.toBeNull();
+    http.expectNone('/api/queue-entries/offer/cancel');
+  });
+
+  it('cancela una sola vez por queueEntryId, con JSON y protección, y actualiza solo tras 204', async () => {
+    await openReservationCancellation();
+    const confirm = button('Confirmar salida'); confirm.click(); confirm.click(); await settle();
+    const request = http.expectOne('/api/queue-entries/offer/cancel');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({});
+    expect(request.request.headers.get('Content-Type')).toBe('application/json');
+    expect(request.request.headers.get('X-Biblioteca-Request')).toBe('1');
+    expect(request.request.params.keys()).toEqual([]);
+    http.expectNone('/api/queue-entries/reserve/cancel');
+    http.expectNone('/api/queue-entries/offer/cancel');
+    http.expectNone('/api/me/circulation');
+    expect(root.querySelector('.reserve-row')).not.toBeNull();
+    expect(button('Saliendo…').disabled).toBe(true);
+    expect(button('Saliendo…').querySelector('svg')).not.toBeNull();
+    expect(button('Conservar turno').disabled).toBe(true);
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await load({ ...circulation, reservations: [], requestConstraints: { ...circulation.requestConstraints, openQueueBookIds: ['b'] } });
+    cancellationDialog().onHide.emit(undefined);
+    expect(root.querySelector('.reserve-row')).toBeNull();
+    expect(root.textContent).toContain('No tenés reservas disponibles para aceptar.');
+    expect(root.textContent).toContain('Redes en espera');
+    expect(root.textContent).toContain('Álgebra privada');
+    expect(document.activeElement).toBe(root.querySelector('app-loans-page main'));
+    expect(router.url).toBe(url);
+  });
+
+  it('503 conserva la reserva y muestra un error diferenciado con reintento explícito', async () => {
+    await openReservationCancellation(); button('Confirmar salida').click();
+    http.expectOne('/api/queue-entries/offer/cancel').flush({ error: { code: 'CIRCULATION_RECONCILIATION_REQUIRED', message: 'dato privado ajeno' } }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(root.querySelector('app-loans-page p-message')?.textContent).toContain('Esta reserva necesita actualizarse');
+    expect(root.textContent).not.toContain('dato privado ajeno');
+    expect(root.querySelector('.reserve-row')).not.toBeNull();
+    http.expectNone('/api/me/circulation');
+    button('Reintentar salida').click();
+    http.expectOne('/api/queue-entries/offer/cancel').flush(null, { status: 204, statusText: 'No Content' });
+    await load(empty);
+    expect(root.querySelector('.reserve-row')).toBeNull();
+    expect(root.querySelector('app-loans-page p-message')).toBeNull();
+  });
+
+  for (const change of ['logout', 'account']) {
+    it(`retira la confirmación de reserva y rechaza la respuesta tardía tras ${change}`, async () => {
+      await openReservationCancellation(); button('Confirmar salida').click();
+      const old = http.expectOne('/api/queue-entries/offer/cancel');
+      const auth = TestBed.inject(AuthService);
+      if (change === 'logout') {
+        auth.logout().subscribe(); http.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+      } else {
+        auth.restore(); http.expectOne('/api/auth/session').flush({ ...session, user: { ...session.user, id: 'bea' } });
+      }
+      await settle();
+      expect(old.cancelled).toBe(true);
+      expect(() => old.flush(null, { status: 204, statusText: 'No Content' })).toThrow();
+      expect(root.textContent).not.toContain('Reserva de sistemas');
+      expect(button('Confirmar salida')).toBeUndefined();
+      if (change === 'account') await load(empty);
+      else http.expectNone('/api/me/circulation');
+      expect(root.querySelector('app-loans-page p-message')).toBeNull();
+      expect(router.url).toBe(url);
+    });
+    it(`limpia también un error de reserva tras ${change}`, async () => {
+      await openReservationCancellation(); button('Confirmar salida').click();
+      http.expectOne('/api/queue-entries/offer/cancel').flush({}, { status: 503, statusText: 'Unavailable' });
+      await settle();
+      expect(root.querySelector('app-loans-page p-message')).not.toBeNull();
+      const auth = TestBed.inject(AuthService);
+      if (change === 'logout') {
+        auth.logout().subscribe(); http.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+      } else {
+        auth.restore(); http.expectOne('/api/auth/session').flush({ ...session, user: { ...session.user, id: 'bea' } });
+      }
+      await settle();
+      if (change === 'account') {
+        await load();
+        root.querySelector<HTMLButtonElement>('.reserve-row p-button button')!.click(); await settle();
+        expect(button('Confirmar salida').disabled).toBe(false);
+      }
+      expect(root.querySelector('app-loans-page p-message')).toBeNull();
+      http.expectNone('/api/queue-entries/offer/cancel');
+    });
+  }
+
+  it('no ofrece salir de OFFERED sin reserva vigente ni de una reserva vencida', async () => {
+    http.expectOne('/api/auth/session').flush(session);
+    await load({ ...circulation, waits: [], reservations: [{ ...circulation.reservations[0], expiresAt: session.serverTime }] });
+    expect(root.querySelector('.reserve-row')).toBeNull();
+    expect(root.querySelector('.waiting-item')).toBeNull();
+    expect(button('Confirmar salida')).toBeUndefined();
+    expect(root.textContent).toContain('No tenés reservas disponibles para aceptar.');
+    http.expectNone('/api/queue-entries/offer/cancel');
+  });
+
+  for (const reservation of [false, true]) {
+    it(`Escape durante el POST mantiene modal, foco y solicitud; reserva=${reservation}`, async () => {
+      if (reservation) await openReservationCancellation();
+      else await openCancellation();
+      button('Confirmar salida').click(); await settle();
+      const endpoint = `/api/queue-entries/${reservation ? 'offer' : 'wait'}/cancel`;
+      const pending = http.expectOne(endpoint);
+      const description = root.querySelector<HTMLElement>('#leave-queue-description')!;
+      expect(document.activeElement).toBe(description);
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      description.dispatchEvent(escape); await settle();
+      expect(escape.defaultPrevented).toBe(true);
+      expect(pending.cancelled).toBe(false);
+      expect(root.querySelector('app-loans-page [role="dialog"]')).not.toBeNull();
+      expect(button('Saliendo…').disabled).toBe(true);
+      expect(document.activeElement).toBe(description);
+      http.expectNone(endpoint);
+      pending.flush({ error: { code: 'CIRCULATION_RECONCILIATION_REQUIRED' } }, { status: 503, statusText: 'Unavailable' });
+      await settle();
+      expect(button('Reintentar salida').disabled).toBe(false);
+      description.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+      cancellationDialog().onHide.emit(undefined);
+      expect(button('Reintentar salida')).toBeUndefined();
+      expect(document.activeElement).toBe(reservation ? root.querySelector('.reserve-row button') : button('Salir de la cola'));
+    });
+  }
 });

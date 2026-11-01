@@ -106,6 +106,10 @@ h2 {
   margin-top: 20px;
 }
 .remaining { font-weight: 650; }
+.leave-queue-action { display: block; margin-top: 14px; }
+.leave-queue-description { margin-bottom: 18px; line-height: 1.6; overflow-wrap: anywhere; }
+.leave-queue-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.leave-queue-actions p-button { flex: 1 1 150px; min-width: 0; }
 .empty-state, .reading-note { color: var(--bdu-muted); font-size: 0.85rem; line-height: 1.6; }
 .reading-note { margin-block: 20px; }
 @media (max-width: 850px) {

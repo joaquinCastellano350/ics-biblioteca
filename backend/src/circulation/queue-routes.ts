@@ -2,7 +2,7 @@ import express from 'express';
 import validator from 'validator';
 import { requireSession } from '../accounts/accounts.controller.js';
 import type { AccountsService } from '../accounts/accounts.service.js';
-import type { QueueFailure, QueueRepositoryInterface } from './queue.js';
+import type { QueueCancellationFailure, QueueFailure, QueueRepositoryInterface } from './queue.js';
 
 const failures: Record<QueueFailure, { status: number; message: string }> = {
   BOOK_NOT_FOUND: { status: 404, message: 'No encontramos este libro en el catálogo.' },
@@ -12,8 +12,34 @@ const failures: Record<QueueFailure, { status: number; message: string }> = {
   CIRCULATION_RECONCILIATION_REQUIRED: { status: 503, message: 'El estado de este libro necesita actualizarse. Intentá nuevamente más tarde.' },
 };
 
+const cancellationFailures: Record<QueueCancellationFailure, { status: number; message: string }> = {
+  QUEUE_ENTRY_NOT_FOUND: { status: 404, message: 'No encontramos esa entrada de cola.' },
+  QUEUE_ENTRY_FULFILLED: { status: 409, message: 'Esta entrada ya se utilizó para obtener un préstamo.' },
+  CIRCULATION_RECONCILIATION_REQUIRED: failures.CIRCULATION_RECONCILIATION_REQUIRED,
+};
+
 export function queueRoutes(accounts: AccountsService, queue: QueueRepositoryInterface) {
   const router = express.Router();
+  router.post('/:entryId/cancel', requireSession(accounts), async (req, res) => {
+    const entryId = req.params['entryId'];
+    // No necesita datos en el cuerpo: admite ausencia o {}. El middleware
+    // compartido mantiene application/json para POST y rechaza JSON malformado.
+    const body: unknown = req.body;
+    const invalidBody = body !== undefined && (body === null || typeof body !== 'object'
+      || Array.isArray(body) || Object.keys(body).length !== 0);
+    if (typeof entryId !== 'string' || !validator.isUUID(entryId)
+      || invalidBody) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Enviá un identificador de entrada válido, sin propiedades adicionales.' } });
+      return;
+    }
+    const result = await queue.cancelQueue(res.locals.identity.userId, entryId);
+    if ('code' in result) {
+      const failure = cancellationFailures[result.code];
+      res.status(failure.status).json({ error: { code: result.code, message: failure.message } });
+      return;
+    }
+    res.status(204).end();
+  });
   // El montaje posterior a accountsController conserva su protección de escritura
   // y el parser JSON compartido, igual que POST /api/loans.
   router.post('/', requireSession(accounts), async (req, res) => {

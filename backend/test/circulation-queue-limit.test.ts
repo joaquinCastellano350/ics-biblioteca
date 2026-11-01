@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { PrismaClient } from '../src/generated/prisma/client.js';
+import type { Prisma, PrismaClient } from '../src/generated/prisma/client.js';
 import { CirculationController } from '../src/circulation/circulation-controller.js';
 import { CirculationRepository } from '../src/circulation/circulation-repository.js';
 import { circulationTransaction } from '../src/circulation/circulation-transaction.js';
@@ -98,7 +98,7 @@ test('rechazo puntual por límite: terminal, en orden y solo al llegar el turno'
       await fiveLoans(full.id);
       const waiting = await queue(full.id, target.id);
       const failing = {
-        $transaction: ((operation, options) => db.$transaction(async tx => {
+        $transaction: (<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]): Promise<T> => db.$transaction(async tx => {
           await operation(tx);
           throw new Error('fallo-de-prueba-antes-del-commit');
         }, options)) as PrismaClient['$transaction'],
@@ -117,7 +117,7 @@ test('rechazo puntual por límite: terminal, en orden y solo al llegar el turno'
         startedAt: at(-481), dueAt: at(-1) } });
       const waiting = await queue(waitingUser.id, target.id);
       const failing = {
-        $transaction: ((operation, options) => db.$transaction(async tx => {
+        $transaction: (<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]): Promise<T> => db.$transaction(async tx => {
           await operation(tx);
           throw new Error('fallo-de-prueba-tras-cerrar');
         }, options)) as PrismaClient['$transaction'],

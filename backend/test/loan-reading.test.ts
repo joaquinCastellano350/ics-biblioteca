@@ -118,7 +118,7 @@ test('lectura HTTP: sesión, autorización, protección y errores sin datos priv
   await once(server, 'listening');
   const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/loans`;
   const headers = { Cookie: `biblioteca_session=${'a'.repeat(43)}`, 'X-Biblioteca-Request': '1' };
-  const read = (id = loanId, auth = headers) => fetch(`${endpoint}/${id}/read-access`, { method: 'POST', headers: auth });
+  const read = (id: string = loanId, auth = headers) => fetch(`${endpoint}/${id}/read-access`, { method: 'POST', headers: auth });
   // Ambos routers comparten /api/loans. El de lectura no debe interceptar
   // concesiones ni sustituir el repositorio de SCRUM-20.
   const grant = await fetch(endpoint, {
