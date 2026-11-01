@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import type { PrismaClient } from '../src/generated/prisma/client.js';
 import { CirculationController } from '../src/circulation/circulation-controller.js';
 import { CirculationRepository } from '../src/circulation/circulation-repository.js';
+import { circulationTransaction } from '../src/circulation/circulation-transaction.js';
+import { releaseReservation } from '../src/circulation/reconcile-books.js';
 import { catalogDatabase } from './catalog-database.js';
 
 test('rechazo puntual por límite: terminal, en orden y solo al llegar el turno', async (t) => {
@@ -42,14 +44,21 @@ test('rechazo puntual por límite: terminal, en orden y solo al llegar el turno'
       assert.ok(rejected.closedAt);
       assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: second.id } })).state, 'OFFERED');
       await db.loan.update({ where: { id: loans[0]!.id }, data: { startedAt: at(-481), dueAt: at(-1) } });
-      // La conciliación conserva el rechazo terminal y la reserva HELD ofrecida al siguiente.
+      // Bajar del límite no recupera la entrada ni desplaza la reserva vigente.
       assert.equal((await availability(target.id))[0]?.availableCopies, 0);
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: second.id } })).state, 'OFFERED');
+      assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'HELD' } }), 1);
+      const held = await db.reservation.findUniqueOrThrow({ where: { queueEntryId: second.id } });
+      await circulationTransaction(db, tx => releaseReservation(tx, held.id, 'CANCELLED'));
+      assert.equal((await availability(target.id))[0]?.availableCopies, 1);
       const after = await db.queueEntry.findUniqueOrThrow({ where: { id: first.id } });
       assert.equal(after.state, 'REJECTED_LIMIT');
       assert.deepEqual(after.closedAt, rejected.closedAt);
-      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: second.id } })).state, 'OFFERED');
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: second.id } })).state, 'CANCELLED');
       assert.equal((await db.loan.findUniqueOrThrow({ where: { id: loans[0]!.id } })).closedAt, null);
-      assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'HELD' } }), 1);
+      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 1);
+      assert.equal(await db.notificationOutbox.count({ where: { queueEntryId: first.id, kind: 'QUEUE_LIMIT_REJECTED' } }), 1);
+      assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'HELD' } }), 0);
     });
 
     await t.test('sin cupos no rechaza una entrada aunque tenga cinco préstamos', async () => {
@@ -79,6 +88,7 @@ test('rechazo puntual por límite: terminal, en orden y solo al llegar el turno'
       assert.equal((await availability(target.id))[0]?.availableCopies, 0);
       assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: eligible.id } })).state, 'OFFERED');
       assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: waiting.id } })).state, 'WAITING');
+      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 1);
       assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'HELD' } }), 1);
     });
 

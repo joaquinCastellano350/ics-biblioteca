@@ -15,7 +15,9 @@
     "test:integration": "tsx --test test/integration/accounts.integration.test.ts",
     "test:notifications:integration": "npm run db:generate && tsx --test test/integration/notifications.integration.test.ts",
     "check:services": "tsx scripts/check-services.ts",
-    "notifications:deliver": "tsx src/notifications/deliver-notifications.ts"
+    "notifications:deliver": "tsx src/notifications/deliver-notifications.ts",
+    "circulation:reconcile": "tsx src/circulation/reconcile-circulation.ts",
+    "test:turns:integration": "npm run db:generate && tsx --test test/integration/turns.integration.test.ts"
   },
   "description": "API y reglas de negocio de la Biblioteca Digital Universitaria",
   "dependencies": {

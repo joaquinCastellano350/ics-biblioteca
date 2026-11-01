@@ -46,7 +46,7 @@ test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL rea
       assert.deepEqual(await circulation.findAvailability([randomUUID()]), []);
     });
 
-    await t.test('descuenta solo préstamos vigentes aunque los vencidos sigan sin cerrar', async () => {
+    await t.test('cierra vencidos y descuenta solo préstamos vigentes', async () => {
       const target = await book();
       const borrowers = await Promise.all([user(), user(), user(), user()]);
       const [active, expired, closed, future] = borrowers;
@@ -77,8 +77,11 @@ test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL rea
           ...(state === 'HELD' ? {} : { closedAt: at(0) }),
         } });
       }
+      const before = await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 3 }]);
       const after = await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } });
+      assert.equal(after.filter(r => r.state === 'HELD').length, 1);
+      for (const row of before.filter(r => r.state !== 'HELD')) assert.deepEqual(after.find(r => r.id === row.id), row);
       assert.equal(after.filter(reservation => reservation.state === 'EXPIRED').length, 2);
       assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'EXPIRED' } }), 1);
     });
@@ -94,6 +97,7 @@ test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL rea
         userId: terminalPerson.id, bookId: target.id, joinedAt: at(-1), state: 'CANCELLED', closedAt: at(0),
       } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 3, availableCopies: 1 }]);
+      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 2);
       assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'HELD' } }), 2);
       assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'OFFERED' } }), 2);
     });

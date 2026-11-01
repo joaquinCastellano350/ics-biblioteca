@@ -23,6 +23,17 @@ exclusivo de prueba y no utiliza la conexión de Neon ni envía correos reales.
 
 Requiere Node.js 24.15 o superior dentro de la rama 24 y npm 11 o superior. Instalar desde la raíz con `npm ci`.
 
+## Turnos y reservas (SCRUM-25)
+
+La [conciliación compartida](../docs/scrum-25-turnos.md) asigna reservas de 24 horas,
+rechaza por límite al llegar el turno y registra ambos avisos en la misma
+transacción. Se integra con catálogo, préstamos, cola y consulta personal.
+`npm run circulation:reconcile --workspace backend` procesa un lote sin iniciar
+Express ni enviar correos; su workflow externo requiere `CIRCULATION_ENABLED`
+y `CIRCULATION_DATABASE_URL`. Reutiliza el emisor de SCRUM-28 para entregar avisos.
+`npm run test:turns:integration --workspace backend` verifica contención en una
+base PostgreSQL 17 local exclusiva. No se agregan migraciones en esta historia.
+
 ## Variables de entorno
 
 En la raíz, `neon deploy` o `neon env pull` escriben las conexiones y credenciales en `.env.local` (o `.env` si existe). La API y Prisma buscan, en ese orden, `.env.local`, `.env` de la raíz y `backend/.env`. Las variables ya definidas en el proceso tienen precedencia, como sucede en Render.
