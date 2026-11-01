@@ -9,8 +9,7 @@ export class CirculationController {
     return occupancy.map(({ bookId, totalCopies, activeLoans, heldReservations, eligibleWaiters }) => ({
       bookId,
       totalCopies,
-      // La creación de reservas queda a cargo de SCRUM-25; aquí se respeta
-      // la capacidad pendiente para las esperas elegibles sin crear ofertas.
+      // La conciliación ya asignó los cupos a reservas persistidas.
       availableCopies: Math.max(0, totalCopies - activeLoans - heldReservations - eligibleWaiters),
     }));
   }

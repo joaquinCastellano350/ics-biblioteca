@@ -49,7 +49,25 @@ test('préstamo directo: reglas persistidas y avisos atómicos', async t => {
       for (let i = 0; i < 4; i++) await oldLoan(student.id, (await book()).id);
       const result = await repository.requestLoan(student.id, target.id);
       assert.ok('loan' in result && result.created);
-      assert.ok((await db.loan.findUniqueOrThrow({ where: { id: expired.id } })).closedAt);
+      const processed = await db.loan.findUniqueOrThrow({ where: { id: expired.id } });
+      assert.ok(processed.closedAt);
+      assert.ok(processed.closedAt >= processed.dueAt);
+      assert.equal(processed.dueAt.getTime(), expired.dueAt.getTime());
+    });
+    await t.test('procesa el vencido y no deja que una solicitud directa adelante a la cola', async () => {
+      const owner = await user();
+      const requester = await user();
+      const target = await book();
+      const expired = await oldLoan(owner.id, target.id, 481);
+      const waiting = await db.queueEntry.create({ data: { userId: requester.id, bookId: target.id } });
+
+      assert.deepEqual(await repository.requestLoan((await user()).id, target.id), { code: 'NO_AVAILABLE_COPIES' });
+      const processed = await db.loan.findUniqueOrThrow({ where: { id: expired.id } });
+      assert.ok(processed.closedAt);
+      assert.ok(processed.closedAt >= processed.dueAt);
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: waiting.id } })).state, 'OFFERED');
+      assert.equal(await db.reservation.count({ where: { bookId: target.id, state: 'HELD' } }), 1);
+      assert.equal(await db.loan.count({ where: { bookId: target.id, dueAt: { gt: processed.closedAt } } }), 0);
     });
     await t.test('respeta reserva vigente, espera ajena y espera propia', async () => {
       const owner = await user();
@@ -82,7 +100,7 @@ test('préstamo directo: reglas persistidas y avisos atómicos', async t => {
     await t.test('fallo antes del commit revierte préstamo y avisos', async () => {
       const student = await user();
       const target = await book();
-      const failing = { $transaction: ((operation, options) => db.$transaction(async tx => {
+      const failing = { $transaction: (<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]): Promise<T> => db.$transaction(async tx => {
         await operation(tx);
         throw new Error('fallo antes del commit');
       }, options)) as PrismaClient['$transaction'] };
@@ -94,7 +112,7 @@ test('préstamo directo: reglas persistidas y avisos atómicos', async t => {
       const student = await user();
       const target = await book();
       let attempts = 0;
-      const retry = { $transaction: ((operation, options) => {
+      const retry = { $transaction: (<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]) => {
         assert.equal(options?.isolationLevel, 'Serializable');
         if (++attempts < 3) return Promise.reject({ meta: { driverAdapterError: { cause: { originalCode: '40001' } } } });
         return db.$transaction(operation, options);
@@ -102,7 +120,7 @@ test('préstamo directo: reglas persistidas y avisos atómicos', async t => {
       assert.ok('loan' in await new LoanRepository(retry).requestLoan(student.id, target.id));
       assert.equal(attempts, 3);
       attempts = 0;
-      const duplicate = { $transaction: ((operation, options) => {
+      const duplicate = { $transaction: (<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]) => {
         if (++attempts === 1) return Promise.reject(new Prisma.PrismaClientKnownRequestError('unique', {
           code: 'P2002', clientVersion: '7.10.1', meta: { modelName: 'Loan' },
         }));

@@ -11,6 +11,7 @@ const migrations = [
   '20261022170000_accounts_and_sessions',
   '20261026000000_circulation_availability',
   '20261027000000_circulation_outbox',
+  '20261029000000_notification_delivery_window',
 ] as const;
 const circulationTables = ['queue_entries', 'loans', 'reservations', 'notification_outbox'] as const;
 

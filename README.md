@@ -104,10 +104,14 @@ correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
 - [Preparación y controles de la primera release](docs/release-sprint-1.md).
 - [Vocabulario del dominio](CONTEXT.md).
 - [Contexto de circulación: reglas y dependencias de préstamos, colas y reservas](docs/contexto-circulacion.md). Leer antes de desarrollar o revisar disponibilidad, turnos y vencimientos.
+- [Turnos y reservas: conciliación, correo e integración de SCRUM-25](docs/scrum-25-turnos.md).
+- [Avisos de vencimiento: procesamiento externo, configuración y reintentos (SCRUM-28)](docs/scrum-28-avisos.md).
 - [Landing e integración de navegación](docs/landing-integracion.md).
 - [Modelo de datos compartido en Confluence](https://joaquincastellano350.atlassian.net/wiki/spaces/SCRUM/pages/6389762) y [copia local sincronizada](docs/modelo-de-datos.md).
 - [Diagrama del modelo](docs/modelo-de-datos.mmd).
 - [Contrato de autenticación y sesión](docs/contrato-autenticacion.md).
 - [Desarrollo y verificación de SCRUM-8](docs/desarrollo-scrum-8.md).
 - [ADR-0002: origen web común aceptado](docs/adr/0002-sesion-y-origen-web.md).
+- [ADR-0003 propuesto: notificaciones con outbox y entrega externa](docs/adr/0003-notificaciones-outbox-y-entrega.md).
+- [Pruebas automatizadas de notificaciones y plantilla HTML](docs/scrum-28-pruebas.md).
 - [Registro de verificación de la puesta en marcha](docs/verificacion-inicial.md).

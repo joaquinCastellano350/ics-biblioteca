@@ -19,6 +19,7 @@ libros, ordenadas por nombre e ID. No pagina ni limita esa lista.
 
 ```json
 {
+  "total": 25,
   "books": [{
     "id": "UUID",
     "title": "Título",
@@ -33,13 +34,20 @@ La respuesta de materias es `{"subjects":[{"id":"UUID","name":"Materia"}]}`.
 Una consulta combinada usa
 `/api/books?title=redes&authorIds=UUIDA&subjectIds=UUID1&subjectIds=UUID2`.
 
-Un catálogo vacío devuelve `{"books":[]}`. No se limita ni pagina la colección.
+`GET /api/books` acepta `page`, entero de base 1 que por defecto vale 1. Cada
+página contiene como máximo 12 libros; el tamaño no es configurable. La respuesta
+es `{"books":[...],"total":25}`: `total` cuenta todas las coincidencias antes
+de paginar. Una página fuera del rango devuelve `books: []` y el mismo total;
+`page` inválido (no entero seguro mayor que cero) devuelve 400 con
+`INVALID_QUERY`. Un catálogo o resultado filtrado vacío devuelve
+`{"books":[],"total":0}`.
+
 Cada libro aparece una vez; conserva todos los autores y materias con sus IDs,
 incluidos autores homónimos. Libros, autores y materias se ordenan por título o
 nombre y, como desempate, por ID. Las tarjetas recortan la presentación para no
 desbordarse, pero conservan los metadatos completos recibidos. No abren detalle.
 
-El controlador consulta Circulación una vez por lote para los libros del resultado
+El controlador consulta Circulación una vez por lote para los libros de la página
 y solo expone los cupos disponibles y totales. No devuelve identidades ni estados
 de préstamos, reservas o esperas. Si falla la disponibilidad o falta un conteo,
 responde 503; no inventa cupos ni entrega una respuesta parcial.

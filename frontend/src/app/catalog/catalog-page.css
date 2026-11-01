@@ -2,6 +2,10 @@
   padding-top: 56px;
   padding-bottom: 72px;
 }
+.catalog-paginator {
+  margin-top: 24px;
+  justify-content: center;
+}
 .page-heading {
   display: flex;
   justify-content: space-between;

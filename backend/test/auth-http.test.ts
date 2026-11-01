@@ -82,7 +82,7 @@ test('login y consulta conservan la respuesta pública y la cookie de seis horas
       bookId, totalCopies: 1, activeLoans: 0, heldReservations: 0, eligibleWaiters: 0,
     })) },
     books: {
-      findAll: async () => [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }],
+      findAll: async () => ({ books: [{ id: 'libro', title: 'Libro público', authors: [], subjects: [] }], total: 1 }),
       findAuthors: async () => [],
     },
   }).listen(0, '127.0.0.1');
@@ -92,7 +92,7 @@ test('login y consulta conservan la respuesta pública y la cookie de seis horas
   const catalog = await fetch(`${base}/api/books`);
   assert.equal(catalog.status, 200);
   assert.deepEqual(await catalog.json(), {
-    books: [{ id: 'libro', title: 'Libro público', authors: [], subjects: [], availability: { availableCopies: 1, totalCopies: 1 } }],
+    books: [{ id: 'libro', title: 'Libro público', authors: [], subjects: [], availability: { availableCopies: 1, totalCopies: 1 } }], total: 1,
   });
   assert.equal((await fetch(`${base}/api/books`, { method: 'POST' })).status, 405);
   const login = await fetch(`${base}/api/auth/login`, {
