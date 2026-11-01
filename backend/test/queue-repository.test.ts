@@ -12,6 +12,8 @@ const userId = '11111111-1111-4111-8111-111111111111';
 const bookId = '22222222-2222-4222-8222-222222222222';
 const order = 9007199254742000n;
 type Entry = { id: string; userId: string; bookId: string; state: string; orderSeq: bigint; joinedAt: Date; closedAt: Date | null };
+type CancellationReservation = Pick<Prisma.ReservationGetPayload<object>,
+  'id' | 'queueEntryId' | 'userId' | 'bookId' | 'state' | 'offeredAt' | 'expiresAt' | 'closedAt'>;
 const entry = (changes: Partial<Entry> = {}): Entry => ({ id: 'previous', userId: 'another-student', bookId,
   state: 'WAITING', orderSeq: 5n, joinedAt: at(-100), closedAt: null, ...changes });
 
@@ -127,7 +129,7 @@ test('unirse a cola integra conciliación, repetición y validaciones persistida
 /** Doble transaccional: comprueba filtros, orden y propagación de fallos, NO el rollback de PostgreSQL. */
 function cancellationFixture(options: {
   entries?: Entry[]; missingUser?: boolean; missingBook?: boolean; clock?: Date | null;
-  revalidated?: Partial<Entry> | 'missing'; associatedReservation?: boolean;
+  revalidated?: Partial<Entry> | 'missing'; associatedReservation?: boolean; reservation?: CancellationReservation;
   totalCopies?: number; activeBookLoans?: number; held?: number; incoherent?: number;
   expiredLoans?: number; expiredReservations?: number; pendingOffers?: number;
   transactionErrors?: unknown[]; updateErrors?: unknown[]; commitError?: unknown; updateCount?: number;
@@ -203,8 +205,15 @@ function cancellationFixture(options: {
     } },
     reservation: {
       async findUnique(args: Prisma.ReservationFindUniqueArgs) {
-        assert.deepEqual(args, { where: { queueEntryId: cancelId }, select: { id: true } });
-        return options.associatedReservation ? { id: 'reservation' } : null;
+        assert.deepEqual(args, { where: { queueEntryId: cancelId }, select: {
+          id: true, queueEntryId: true, userId: true, bookId: true, state: true,
+          offeredAt: true, expiresAt: true, closedAt: true,
+        } });
+        assert.deepEqual(locks.slice(-2), ['user', 'book']);
+        return options.reservation ?? (options.associatedReservation ? {
+          id: 'reservation', queueEntryId: cancelId, userId, bookId, state: 'EXPIRED',
+          offeredAt: at(-50), expiresAt: new Date(at(-50).getTime() + 24 * 3_600_000), closedAt: now,
+        } : null);
       },
       async count(args: Prisma.ReservationCountArgs) {
         const where = args.where!; assert.equal(where.bookId, bookId); assert.equal(where.state, 'HELD');
@@ -271,7 +280,7 @@ test('FULFILLED devuelve conflicto sin alterar el préstamo ni la entrada', asyn
 });
 
 for (const associatedReservation of [false, true]) {
-  test(`OFFERED exige conciliación, con o sin reserva asociada (${associatedReservation})`, async () => {
+  test(`OFFERED sin reserva HELD coherente exige conciliación (${associatedReservation})`, async () => {
     const f = cancellationFixture({ entries: [entry({ id: cancelId, userId, state: 'OFFERED' })], associatedReservation });
     assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { code: 'CIRCULATION_RECONCILIATION_REQUIRED' });
     assert.deepEqual(f.writes, []);
@@ -283,6 +292,50 @@ test('WAITING con una reserva asociada no se cierra aisladamente', async () => {
   await assert.rejects(f.repository.cancelQueue(userId, cancelId), { code: 'INTERNAL_ERROR' });
   assert.deepEqual(f.writes, []);
 });
+
+const heldReservation = (): CancellationReservation => ({ id: 'held', queueEntryId: cancelId, userId, bookId,
+  state: 'HELD', offeredAt: at(-50), expiresAt: new Date(at(-50).getTime() + 24 * 3_600_000), closedAt: null });
+
+for (const changes of [
+  { userId: 'otra-persona' }, { bookId: 'otro-libro' }, { queueEntryId: 'otra-entrada' },
+  { state: 'CONSUMED' }, { closedAt: now }, { offeredAt: at(1) }, { expiresAt: now },
+  { offeredAt: new Date(NaN) }, { expiresAt: new Date(NaN) },
+]) {
+  test(`OFFERED rechaza reserva incoherente sin escrituras: ${Object.keys(changes)}`, async () => {
+    const f = cancellationFixture({ entries: [entry({ id: cancelId, userId, state: 'OFFERED' })],
+      reservation: { ...heldReservation(), ...changes } });
+    assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { code: 'CIRCULATION_RECONCILIATION_REQUIRED' });
+    assert.deepEqual(f.writes, []); assert.deepEqual(f.locks, ['user', 'book']);
+  });
+}
+
+for (const state of ['CANCELLED', 'EXPIRED', 'REJECTED_LIMIT']) {
+  test(`terminal ${state} no informa éxito si conserva una reserva HELD`, async () => {
+    const f = cancellationFixture({ entries: [entry({ id: cancelId, userId, state, closedAt: now })], reservation: heldReservation() });
+    await assert.rejects(f.repository.cancelQueue(userId, cancelId), { code: 'INTERNAL_ERROR' });
+    assert.deepEqual(f.writes, []);
+  });
+  test(`terminal ${state} con reserva cerrada coherente conserva idempotencia`, async () => {
+    const f = cancellationFixture({ entries: [entry({ id: cancelId, userId, state, closedAt: now })],
+      reservation: { ...heldReservation(), state, closedAt: now } });
+    assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { closed: true });
+    assert.deepEqual(f.writes, []);
+  });
+}
+
+for (const error of [
+  { code: 'P2002', meta: { modelName: 'Reservation', target: ['queueEntryId'] } },
+  { code: 'P2002', meta: { modelName: 'NotificationOutbox', target: ['dedupKey'] } },
+]) {
+  test('cancelación comparte reintentos limitados por colisiones de conciliación', async () => {
+    const f = cancellationFixture({ transactionErrors: [error] });
+    assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { closed: true });
+    assert.equal(f.transactions.length, 2);
+    const exhausted = cancellationFixture({ transactionErrors: [error, error, error] });
+    await assert.rejects(exhausted.repository.cancelQueue(userId, cancelId), { code: 'SERVICE_UNAVAILABLE' });
+    assert.equal(exhausted.transactions.length, 3); assert.deepEqual(exhausted.writes, []);
+  });
+}
 
 for (const options of [{ expiredLoans: 1 }, { expiredReservations: 1 }, { pendingOffers: 1 }, { activeBookLoans: 0 }]) {
   test(`cancelación con conciliación pendiente no escribe: ${Object.keys(options)}`, async () => {
@@ -365,4 +418,127 @@ test('cancelación sin estudiante persistido devuelve AUTH_REQUIRED antes de lee
   const f = cancellationFixture({ missingUser: true });
   await assert.rejects(f.repository.cancelQueue(userId, cancelId), { code: 'AUTH_REQUIRED' });
   assert.deepEqual(f.reads, []); assert.deepEqual(f.writes, []);
+});
+
+test('cancelación OFFERED integra liberación, reasignación y rollback con PGlite aislado', async t => {
+  const fixture = await catalogDatabase(); const db = fixture.client;
+  try {
+    const university = await db.university.create({ data: { name: 'Universidad ficticia de cancelación' } });
+    let sequence = 0;
+    const user = () => db.user.create({ data: { firstName: 'Estudiante', lastName: 'Prueba',
+      email: `salida-${++sequence}@example.invalid`, passwordHash: 'fixture', universityId: university.id } });
+    const book = (totalCopies = 1) => db.book.create({ data: { title: 'Libro de cancelación', titleSearch: 'libro',
+      pdfObjectKey: 'fixture.pdf', totalCopies } });
+    const repository = new QueueRepository(db);
+    async function prepare(count = 3) {
+      const target = await book(0);
+      const students = []; const entries = [];
+      for (let i = 0; i < count; i++) {
+        const student = await user(); students.push(student);
+        entries.push(await db.queueEntry.create({ data: { userId: student.id, bookId: target.id } }));
+      }
+      await db.book.update({ where: { id: target.id }, data: { totalCopies: 1 } });
+      // La inscripción existente reutiliza SCRUM-25 y ofrece el primer turno.
+      const result = await repository.joinQueue(students[0]!.id, target.id);
+      assert.ok(!('code' in result)); assert.equal(result.entry.state, 'OFFERED');
+      const held = await db.reservation.findUniqueOrThrow({ where: { queueEntryId: entries[0]!.id } });
+      return { target, students, entries, held };
+    }
+    const snapshot = async (id: string) => ({
+      entries: await db.queueEntry.findMany({ where: { bookId: id }, orderBy: { orderSeq: 'asc' } }),
+      reservations: await db.reservation.findMany({ where: { bookId: id }, orderBy: { id: 'asc' } }),
+      notices: await db.notificationOutbox.findMany({ where: { reservation: { bookId: id } }, orderBy: { id: 'asc' } }),
+    });
+
+    await t.test('propia HELD: cancela, ofrece al siguiente por FIFO y registra un aviso sin revelar su identidad', async () => {
+      const f = await prepare();
+      assert.deepEqual(await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id), { closed: true });
+      const closed = await db.reservation.findUniqueOrThrow({ where: { id: f.held.id } });
+      assert.equal(closed.state, 'CANCELLED'); assert.ok(closed.closedAt);
+      const oldEntry = await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[0]!.id } });
+      assert.equal(oldEntry.state, 'CANCELLED'); assert.deepEqual(oldEntry.closedAt, closed.closedAt);
+      const next = await db.reservation.findUniqueOrThrow({ where: { queueEntryId: f.entries[1]!.id } });
+      assert.equal(next.userId, f.students[1]!.id); assert.equal(next.state, 'HELD');
+      assert.equal(next.expiresAt.getTime() - next.offeredAt.getTime(), 24 * 3_600_000);
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[2]!.id } })).state, 'WAITING');
+      assert.equal(await db.notificationOutbox.count({ where: { reservationId: next.id, kind: 'TURN_AVAILABLE' } }), 1);
+      const before = await snapshot(f.target.id);
+      assert.deepEqual(await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id), { closed: true });
+      assert.deepEqual(await snapshot(f.target.id), before);
+    });
+
+    await t.test('ajena e inexistente devuelven lo mismo y no alteran reservas ni avisos', async () => {
+      const f = await prepare(); const before = await snapshot(f.target.id);
+      assert.deepEqual(await repository.cancelQueue(f.students[1]!.id, f.entries[0]!.id), { code: 'QUEUE_ENTRY_NOT_FOUND' });
+      assert.deepEqual(await repository.cancelQueue(f.students[1]!.id, '00000000-0000-4000-8000-000000000000'), { code: 'QUEUE_ENTRY_NOT_FOUND' });
+      assert.deepEqual(await snapshot(f.target.id), before);
+    });
+
+    await t.test('rechaza al sucesor con cinco préstamos y ofrece al siguiente elegible', async () => {
+      const f = await prepare(); const startedAt = f.held.offeredAt;
+      for (let i = 0; i < 5; i++) await db.loan.create({ data: { userId: f.students[1]!.id, bookId: (await book()).id,
+        startedAt, dueAt: new Date(startedAt.getTime() + 480 * 3_600_000) } });
+      await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id);
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[1]!.id } })).state, 'REJECTED_LIMIT');
+      assert.equal((await db.reservation.findUniqueOrThrow({ where: { queueEntryId: f.entries[2]!.id } })).userId, f.students[2]!.id);
+      assert.equal(await db.notificationOutbox.count({ where: { queueEntryId: f.entries[1]!.id, kind: 'QUEUE_LIMIT_REJECTED' } }), 1);
+    });
+
+    await t.test('no ofrece al sucesor que ya tiene ese libro prestado', async () => {
+      const f = await prepare(); const startedAt = f.held.offeredAt;
+      await db.book.update({ where: { id: f.target.id }, data: { totalCopies: 2 } });
+      await db.loan.create({ data: { userId: f.students[1]!.id, bookId: f.target.id,
+        startedAt, dueAt: new Date(startedAt.getTime() + 480 * 3_600_000) } });
+      await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id);
+      assert.equal(await db.reservation.count({ where: { queueEntryId: f.entries[1]!.id } }), 0);
+      assert.equal((await db.reservation.findUniqueOrThrow({ where: { queueEntryId: f.entries[2]!.id } })).state, 'HELD');
+    });
+
+    await t.test('sin sucesor libera capacidad sin inventar reservas ni avisos nuevos', async () => {
+      const f = await prepare(1);
+      await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id);
+      assert.equal(await db.reservation.count({ where: { bookId: f.target.id, state: 'HELD' } }), 0);
+      assert.equal(await db.reservation.count({ where: { bookId: f.target.id } }), 1);
+      assert.equal(await db.notificationOutbox.count({ where: { reservationId: f.held.id } }), 1);
+    });
+
+    await t.test('reserva vencida termina EXPIRED sin renovar plazo, y reasigna con una reserva nueva', async () => {
+      const f = await prepare(); const offeredAt = new Date(f.held.offeredAt.getTime() - 25 * 3_600_000);
+      const expiresAt = new Date(offeredAt.getTime() + 24 * 3_600_000);
+      await db.queueEntry.update({ where: { id: f.entries[0]!.id }, data: { joinedAt: offeredAt } });
+      await db.reservation.update({ where: { id: f.held.id }, data: { offeredAt, expiresAt } });
+      await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id);
+      const old = await db.reservation.findUniqueOrThrow({ where: { id: f.held.id } });
+      assert.equal(old.state, 'EXPIRED'); assert.deepEqual(old.expiresAt, expiresAt);
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[0]!.id } })).state, 'EXPIRED');
+      assert.equal((await db.reservation.findUniqueOrThrow({ where: { queueEntryId: f.entries[1]!.id } })).state, 'HELD');
+    });
+
+    for (const table of ['reservations', 'notification_outbox'] as const) {
+      await t.test(`fallo al insertar ${table} revierte salida, reserva nueva y outbox`, async () => {
+        const f = await prepare(); const before = await snapshot(f.target.id);
+        await db.$executeRawUnsafe(`CREATE FUNCTION fail_cancel_reassignment() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN RAISE EXCEPTION 'SCRUM24_ROLLBACK_TEST'; END; $$`);
+        try {
+          await db.$executeRawUnsafe(`CREATE TRIGGER fail_cancel_reassignment BEFORE INSERT ON ${table}
+            FOR EACH ROW EXECUTE FUNCTION fail_cancel_reassignment()`);
+          await assert.rejects(repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id));
+          assert.deepEqual(await snapshot(f.target.id), before);
+        } finally {
+          await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS fail_cancel_reassignment ON ${table}`);
+          await db.$executeRawUnsafe('DROP FUNCTION fail_cancel_reassignment()');
+        }
+        assert.deepEqual(await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id), { closed: true });
+      });
+    }
+
+    await t.test('dos llamadas solapadas conservan una sola reasignación (pool local de una conexión)', async () => {
+      const f = await prepare();
+      const results = await Promise.all([1, 2].map(() => repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id)));
+      assert.deepEqual(results, [{ closed: true }, { closed: true }]);
+      assert.equal(await db.reservation.count({ where: { bookId: f.target.id } }), 2);
+      const successor = await db.reservation.findUniqueOrThrow({ where: { queueEntryId: f.entries[1]!.id } });
+      assert.equal(await db.notificationOutbox.count({ where: { reservationId: successor.id } }), 1);
+    });
+  } finally { await fixture.close(); }
 });

@@ -55,7 +55,13 @@
                   <p>Aceptá tu reserva antes del <time [attr.datetime]="reservation.expiresAt">{{ date(reservation.expiresAt) }}</time>.</p>
                   <p class="remaining">Tiempo restante: {{ remaining(reservation.expiresAt) }}</p>
                 </div>
-                <p-tag severity="success" value="Cupo reservado" />
+                <div>
+                  <p-tag severity="success" value="Cupo reservado" />
+                  <p-button class="leave-queue-action" label="Salir de la cola" type="button" severity="secondary" variant="outlined"
+                    [ariaLabel]="'Salir de la cola de ' + reservation.book.title" aria-controls="leave-queue-dialog"
+                    [disabled]="cancelPending() || auth.authenticating() || auth.loggingOut()"
+                    (onClick)="askToLeave(reservation, $event)" />
+                </div>
               </article>
             } @empty {
               <p class="empty-state">No tenés reservas disponibles para aceptar.</p>
@@ -100,17 +106,25 @@
     }
   </section>
 </main>
-<p-dialog id="leave-queue-dialog" header="Salir de la cola" [visible]="selectedWait() !== null" [modal]="true"
+<p-dialog id="leave-queue-dialog" header="Salir de la cola" [visible]="selectedEntry() !== null" [modal]="true"
   [style]="{ width: '470px', maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100dvh - 42px)' }"
-  [draggable]="false" [resizable]="false" [closable]="!cancelPending()" [closeOnEscape]="!cancelPending()"
+  [draggable]="false" [resizable]="false" [closable]="!cancelPending()" [closeOnEscape]="false"
+  (keydown.escape)="cancellationEscape($event)"
   closeAriaLabel="Cerrar confirmación de salida de la cola" (visibleChange)="!$event && dismissCancellation()"
   (onShow)="focusKeepWaiting()" (onHide)="restoreCancellationFocus()">
-  @if (selectedWait(); as wait) {
-    <p class="leave-queue-description">¿Querés dejar de esperar <strong>{{ wait.book.title }}</strong>?
-      Si volvés a ingresar, se te asignará una nueva posición.</p>
+  @if (selectedEntry(); as entry) {
+    <p class="leave-queue-description" id="leave-queue-description" tabindex="-1" [attr.aria-busy]="cancelPending()">
+      @if (entry.kind === 'reservation') {
+        ¿Querés abandonar tu turno para <strong>{{ entry.book.title }}</strong>?
+        Al salir, perdés este turno y liberás el cupo.
+      } @else {
+        ¿Querés dejar de esperar <strong>{{ entry.book.title }}</strong>?
+      }
+      Si volvés a ingresar, se te asignará una nueva posición.
+    </p>
     @if (cancelError()) { <p-message severity="error">{{ cancelError() }}</p-message> }
     <div class="leave-queue-actions">
-      <p-button data-keep-waiting label="Seguir esperando" type="button" severity="secondary" variant="outlined"
+      <p-button data-keep-waiting [label]="entry.kind === 'reservation' ? 'Conservar turno' : 'Seguir esperando'" type="button" severity="secondary" variant="outlined"
         [fluid]="true" [disabled]="cancelPending()" (onClick)="dismissCancellation()" />
       <p-button [label]="cancelPending() ? 'Saliendo…' : (cancelError() ? 'Reintentar salida' : 'Confirmar salida')"
         type="button" [fluid]="true" [loading]="cancelPending()" [disabled]="cancelPending()"

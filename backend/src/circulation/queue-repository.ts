@@ -1,7 +1,7 @@
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import { AccountError } from '../accounts/account-error.js';
-import { circulationTransaction, retryable } from './circulation-transaction.js';
-import { reconcileBooks } from './reconcile-books.js';
+import { circulationTransaction } from './circulation-transaction.js';
+import { reconcileBooks, releaseReservation } from './reconcile-books.js';
 import type { QueueCancellationResult, QueueRepositoryInterface, QueueResult } from './queue.js';
 
 const openIndex = 'queue_entries_user_book_open_key';
@@ -41,17 +41,9 @@ export class QueueRepository implements QueueRepositoryInterface {
   }
 
   async cancelQueue(userId: string, entryId: string): Promise<QueueCancellationResult> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await this.database.$transaction(tx => this.cancel(tx, userId, entryId), {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000,
-        });
-      } catch (error) {
-        // Cancelar no crea entradas: una violación UNIQUE nunca justifica reintentar aquí.
-        if (!retryable(error)) throw error;
-        if (attempt >= 2) throw new AccountError('SERVICE_UNAVAILABLE');
-      }
-    }
+    // La liberación puede crear la reserva y el aviso del sucesor: comparte los
+    // reintentos de conciliación, sin agregar las colisiones de inscripción.
+    return circulationTransaction(this.database, tx => this.cancel(tx, userId, entryId));
   }
 
   private async cancel(tx: Prisma.TransactionClient, userId: string, entryId: string): Promise<QueueCancellationResult> {
@@ -76,12 +68,36 @@ export class QueueRepository implements QueueRepositoryInterface {
       if (!(entry.closedAt instanceof Date) || !Number.isFinite(entry.closedAt.getTime()) || entry.closedAt < entry.joinedAt) {
         throw new AccountError('INTERNAL_ERROR');
       }
-      return entry.state === 'FULFILLED' ? { code: 'QUEUE_ENTRY_FULFILLED' } : { closed: true };
+      if (entry.state === 'FULFILLED') return { code: 'QUEUE_ENTRY_FULFILLED' };
     }
-    if (!['WAITING', 'OFFERED'].includes(entry.state) || entry.closedAt !== null) throw new AccountError('INTERNAL_ERROR');
-    // La oferta y su reserva necesitan la operación compartida de SCRUM-25/27.
-    if (entry.state === 'OFFERED') return { code: 'CIRCULATION_RECONCILIATION_REQUIRED' };
-    const reservation = await tx.reservation.findUnique({ where: { queueEntryId: entryId }, select: { id: true } });
+    if (!terminal && (!['WAITING', 'OFFERED'].includes(entry.state) || entry.closedAt !== null)) throw new AccountError('INTERNAL_ERROR');
+    const reservation = await tx.reservation.findUnique({ where: { queueEntryId: entryId }, select: {
+      id: true, queueEntryId: true, userId: true, bookId: true, state: true,
+      offeredAt: true, expiresAt: true, closedAt: true,
+    } });
+    const matchingReservation = reservation && reservation.queueEntryId === entryId
+      && reservation.userId === userId && reservation.bookId === bookId;
+    const validDates = reservation && reservation.offeredAt instanceof Date && reservation.expiresAt instanceof Date
+      && Number.isFinite(reservation.offeredAt.getTime()) && Number.isFinite(reservation.expiresAt.getTime())
+      && reservation.offeredAt >= entry.joinedAt && reservation.offeredAt <= clock.now
+      && reservation.expiresAt.getTime() - reservation.offeredAt.getTime() === 24 * 3_600_000;
+    if (terminal) {
+      if (reservation && (!matchingReservation || !validDates || reservation.state !== entry.state
+        || !(reservation.closedAt instanceof Date) || !Number.isFinite(reservation.closedAt.getTime())
+        || reservation.closedAt < reservation.offeredAt || reservation.closedAt > clock.now)) {
+        throw new AccountError('INTERNAL_ERROR');
+      }
+      return { closed: true };
+    }
+    if (entry.state === 'OFFERED') {
+      if (!reservation || !matchingReservation || !validDates || reservation.state !== 'HELD' || reservation.closedAt !== null) {
+        return { code: 'CIRCULATION_RECONCILIATION_REQUIRED' };
+      }
+      // Sin transacción anidada ni selección propia de sucesores. Si falla la
+      // reasignación o el outbox, el callback falla y se revierte también la salida.
+      await releaseReservation(tx, reservation.id, 'CANCELLED');
+      return { closed: true };
+    }
     if (reservation) throw new AccountError('INTERNAL_ERROR');
     const book = await tx.book.findUnique({ where: { id: bookId }, select: { totalCopies: true } });
     if (!book) throw new AccountError('INTERNAL_ERROR');

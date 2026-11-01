@@ -17,6 +17,7 @@ const entryId = '44444444-4444-4444-8444-444444444444';
 async function fixture(t: TestContext, options: {
   code?: QueueFailure; state?: 'WAITING' | 'OFFERED'; existing?: boolean; error?: unknown; sessionError?: unknown;
   cancelCode?: QueueCancellationFailure; cancelError?: unknown; cancelOwner?: 'ana' | 'bea';
+  cancelGate?: Promise<void>; cancelStarted?: () => void;
 } = {}) {
   const calls: Array<{ userId: string; bookId: string }> = [];
   const cancelCalls: Array<{ userId: string; entryId: string }> = [];
@@ -49,6 +50,8 @@ async function fixture(t: TestContext, options: {
           : { ...entry, state: 'WAITING', position: 3 } };
     }, async cancelQueue(userId, requestedEntry): Promise<QueueCancellationResult> {
       cancelCalls.push({ userId, entryId: requestedEntry });
+      options.cancelStarted?.();
+      if (options.cancelGate) await options.cancelGate;
       if (options.cancelError) throw options.cancelError;
       if (requestedEntry !== entryId || userId !== (options.cancelOwner ?? 'ana')) return { code: 'QUEUE_ENTRY_NOT_FOUND' };
       if (options.cancelCode) return { code: options.cancelCode };
@@ -86,6 +89,31 @@ test('HTTP 201: contrato público, fechas ISO, no-store y ninguna cookie ni dato
   }
   assert.deepEqual(f.calls, [{ userId: 'ana', bookId }]);
 });
+
+for (const fails of [false, true]) {
+  test(`cancelación HTTP espera el commit/reasignación y oculta al sucesor; fallo=${fails}`, async t => {
+    let release!: () => void; let fail!: (error: Error) => void; let started!: () => void;
+    const began = new Promise<void>(resolve => { started = resolve; });
+    const gate = new Promise<void>((resolve, reject) => { release = resolve; fail = reject; });
+    const f = await fixture(t, { cancelGate: gate, cancelStarted: started });
+    let responded = false;
+    const pending = fetch(`${f.base}/api/queue-entries/${entryId}/cancel?userId=bea`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Biblioteca-Request': '1',
+        Cookie: `biblioteca_session=${tokens.ana}` }, body: '{}',
+    }).then(response => { responded = true; return response; });
+    await began;
+    assert.equal(responded, false);
+    assert.deepEqual(f.cancelCalls, [{ userId: 'ana', entryId }]);
+    if (fails) fail(new Error('outbox: datos privados del sucesor'));
+    else release();
+    const response = await pending;
+    assert.equal(response.status, fails ? 500 : 204);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('set-cookie'), null);
+    if (fails) assert.deepEqual(await response.json(), { error: { code: 'INTERNAL_ERROR', message: 'No se pudo completar la operación.' } });
+    else assert.equal(await response.text(), '');
+  });
+}
 
 test('cancelación HTTP: 204 vacío, no-store, sin cookie y titular exclusivamente de sesión', async t => {
   for (const owner of ['ana', 'bea'] as const) {
