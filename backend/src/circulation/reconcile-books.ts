@@ -72,7 +72,8 @@ export async function reconcileBooks(tx: Prisma.TransactionClient, bookIds: read
       await tx.queueEntry.update({ where: { id: entry.id }, data: { state: 'OFFERED' } });
       await tx.notificationOutbox.create({ data: {
         userId: entry.userId, reservationId: reservation.id, kind: 'TURN_AVAILABLE', dedupKey: `reservation:${reservation.id}:turn`,
-        recipientEmail: entry.user.email, payload: { bookTitle: book.title, expiresAt: reservation.expiresAt.toISOString() },
+        recipientEmail: entry.user.email, payload: { bookTitle: book.title, expiresAt: reservation.expiresAt.toISOString(),
+          acceptancePath: `/turno/${reservation.id}` },
         scheduledAt: now, nextAttemptAt: now,
       } });
       remaining--;

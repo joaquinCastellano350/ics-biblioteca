@@ -73,3 +73,23 @@ test('contenido incompleto o tipo desconocido no produce un correo', () => {
     assert.equal(notificationMessage({ ...notice('QUEUE_LIMIT_REJECTED'), payload }, 'https://biblioteca.example.org/prestamos'), null);
   }
 });
+
+test('SCRUM-26: nuevos turnos enlazan la aceptación y avisos históricos conservan su mensaje', () => {
+  const historical = notice('TURN_AVAILABLE');
+  historical.loanId = null;
+  historical.reservationId = '11111111-1111-4111-8111-111111111111';
+  const oldMessage = notificationMessage(historical, 'https://biblioteca.example.org/prestamos');
+  assert.ok(oldMessage?.text.includes('https://biblioteca.example.org/prestamos'));
+  assert.ok(oldMessage?.html.includes('>Ver préstamos y reservas</a>'));
+  const current = { ...historical, payload: { bookTitle: 'Libro', expiresAt: '2026-11-02T12:00:00Z',
+    acceptancePath: `/turno/${historical.reservationId}` } };
+  const message = notificationMessage(current, 'https://biblioteca.example.org/prestamos');
+  assert.ok(message?.text.includes(`https://biblioteca.example.org/turno/${historical.reservationId}`));
+  assert.ok(message?.html.includes(`href="https://biblioteca.example.org/turno/${historical.reservationId}"`));
+  assert.ok(message?.html.includes('>Aceptar préstamo</a>'));
+  assert.ok(message?.text.includes('la aceptación continuará automáticamente'));
+  assert.deepEqual(notificationMessage(historical, 'https://biblioteca.example.org/prestamos'), oldMessage);
+  for (const acceptancePath of ['https://evil.example.org/', '/turno/otra-reserva']) {
+    assert.equal(notificationMessage({ ...current, payload: { ...current.payload, acceptancePath } }, 'https://biblioteca.example.org/prestamos'), null);
+  }
+});
