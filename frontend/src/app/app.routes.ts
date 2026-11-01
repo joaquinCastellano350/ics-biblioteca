@@ -2,6 +2,11 @@ import { Routes } from '@angular/router';
 
 export const routes: Routes = [
   {
+    path: 'turno/:reservationId',
+    title: 'Aceptar reserva · Biblioteca Digital Universitaria',
+    loadComponent: () => import('./loans/reservation-page').then(m => m.ReservationPage),
+  },
+  {
     path: 'catalogo',
     title: 'Catálogo · Biblioteca Digital Universitaria',
     loadComponent: () => import('./catalog/catalog-page').then((m) => m.CatalogPage),

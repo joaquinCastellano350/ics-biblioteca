@@ -101,6 +101,7 @@ correspondiente. El arranque de la API no ejecuta migraciones ni carga datos.
 
 ## Documentación
 
+- [Aceptación de reservas: contrato, alcance e integración de SCRUM-26](docs/scrum-26-aceptacion.md).
 - [Preparación y controles de la primera release](docs/release-sprint-1.md).
 - [Vocabulario del dominio](CONTEXT.md).
 - [Contexto de circulación: reglas y dependencias de préstamos, colas y reservas](docs/contexto-circulacion.md). Leer antes de desarrollar o revisar disponibilidad, turnos y vencimientos.

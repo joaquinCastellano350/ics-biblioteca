@@ -106,6 +106,7 @@ h2 {
   margin-top: 20px;
 }
 .remaining { font-weight: 650; }
+.reserve-actions { display: grid; gap: 12px; min-width: 180px; max-width: 100%; }
 .empty-state, .reading-note { color: var(--bdu-muted); font-size: 0.85rem; line-height: 1.6; }
 .reading-note { margin-block: 20px; }
 @media (max-width: 850px) {
@@ -113,6 +114,7 @@ h2 {
 }
 @media (max-width: 600px) {
   .content-section-header, .reserve-row { align-items: flex-start; flex-direction: column; }
+  .reserve-actions { width: 100%; min-width: 0; }
   .loans-page {
     padding-block: 35px 45px;
   }
