@@ -23,6 +23,9 @@ import type { LoanReadingRepositoryInterface } from './loan/loan-repository-inte
 import type { PdfAccessSigner } from './loan/loan.js';
 import { LoanController } from './loan/loan-controller.js';
 import { loanReadingRoutes } from './loan/loan-routes.js';
+import type { ReservationRepositoryInterface } from './circulation/reservation.js';
+import { ReservationController } from './circulation/reservation-controller.js';
+import { reservationRoutes } from './circulation/reservation-routes.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -34,6 +37,7 @@ interface AppServices {
   books?: BookRepositoryInterface;
   circulation?: CirculationRepositoryInterface;
   loans?: LoanRepositoryInterface;
+  reservations?: ReservationRepositoryInterface;
   circulationQueries?: CirculationQueryRepositoryInterface;
   queue?: QueueRepositoryInterface;
   loanReading?: LoanReadingRepositoryInterface;
@@ -76,6 +80,9 @@ export function createApp(services: AppServices) {
     services.accounts, services.production ?? false, services.registrationService, services.listUniversities,
   ));
   if (services.accounts && services.loans) app.use('/api/loans', loanRoutes(services.accounts, services.loans));
+  if (services.accounts && services.reservations) {
+    app.use('/api/reservations', reservationRoutes(services.accounts, new ReservationController(services.reservations)));
+  }
   if (services.accounts && services.queue) app.use('/api/queue-entries', queueRoutes(services.accounts, services.queue));
   if (services.accounts && services.circulationQueries) {
     app.use('/api', circulationQueryRoutes(services.accounts, services.circulationQueries));

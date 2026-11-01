@@ -43,7 +43,7 @@ export async function turnsScenarios(t: TestContext, db: PrismaClient) {
       assert.equal(notification.userId, entry.userId);
       assert.equal(notification.state, 'PENDING');
       assert.equal(notification.reservationId, held.id);
-      assert.deepEqual(notification.payload, { bookTitle: target.title, expiresAt: held.expiresAt.toISOString() });
+      assert.deepEqual(notification.payload, { bookTitle: target.title, expiresAt: held.expiresAt.toISOString(), acceptancePath: `/turno/${held.id}` });
     }
     assert.equal(await state(entries[2]!.id), 'WAITING');
     await Promise.all([offer(target.id), offer(target.id)]);
