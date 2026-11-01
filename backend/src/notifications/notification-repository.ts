@@ -55,8 +55,8 @@ export class NotificationRepository {
         return Boolean(entry);
       }
       const reservation = await tx.reservation.findFirst({ where: {
-        id: notification.reservationId!, userId: notification.userId, state: 'HELD', expiresAt: { gt: now },
-        queueEntry: { userId: notification.userId, state: 'OFFERED' },
+        id: notification.reservationId!, userId: notification.userId, state: 'HELD', closedAt: null, expiresAt: { gt: now },
+        queueEntry: { userId: notification.userId, state: 'OFFERED', closedAt: null },
       } });
       return Boolean(reservation);
     });

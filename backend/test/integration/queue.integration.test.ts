@@ -149,25 +149,19 @@ describe('SCRUM-23 con PostgreSQL 17 local exclusivo', { concurrency: false, tim
     const personal = await http.personal(2); assert.equal(personal.waits.length, 0); assert.equal(personal.reservations.length, 1);
   });
 
-  it('cinco préstamos vigentes: 409 y ninguna escritura de circulación', async t => {
+  it('cinco préstamos vigentes: 409 sin cambios persistidos si no hay conciliación pendiente', async t => {
     for (let i = 0; i < 5; i++) await fixture.addLoan(data.students[0]!.id, await fixture.createBook());
     const before = await fixture.snapshot(); const http = await app(t);
-    await fixture.installFault('reject-writes');
-    try {
-      const response = await http.post(); assert.equal(response.status, 409);
-      assert.equal(response.body.error.code, 'LOAN_LIMIT_REACHED');
-      assert.equal(await fixture.writeAttempts(), 0); assert.deepEqual(await fixture.snapshot(), before);
-    } finally { await fixture.removeHooks(); }
+    const response = await http.post(); assert.equal(response.status, 409);
+    assert.equal(response.body.error.code, 'LOAN_LIMIT_REACHED');
+    assert.deepEqual(await fixture.snapshot(), before);
   });
 
-  it('libro propio prestado: 409 y ninguna escritura de circulación', async t => {
+  it('libro propio prestado: 409 sin cambios persistidos si no hay conciliación pendiente', async t => {
     const before = await fixture.snapshot(); const http = await app(t);
-    await fixture.installFault('reject-writes');
-    try {
-      const response = await http.post(3); assert.equal(response.status, 409);
-      assert.equal(response.body.error.code, 'BOOK_ALREADY_BORROWED');
-      assert.equal(await fixture.writeAttempts(), 0); assert.deepEqual(await fixture.snapshot(), before);
-    } finally { await fixture.removeHooks(); }
+    const response = await http.post(3); assert.equal(response.status, 409);
+    assert.equal(response.body.error.code, 'BOOK_ALREADY_BORROWED');
+    assert.deepEqual(await fixture.snapshot(), before);
   });
 
   it('fallo AFTER INSERT: rollback real de la entrada y de la escritura auxiliar', async t => {
@@ -185,7 +179,7 @@ describe('SCRUM-23 con PostgreSQL 17 local exclusivo', { concurrency: false, tim
   });
 
   for (const pending of ['expired-loan', 'expired-reservation', 'orphan-offer', 'waiting-with-capacity']) {
-    it(`conciliación pendiente (${pending}): 503 sin intentos de escritura`, async t => {
+    it(`entrada en cola concilia ${pending} antes de decidir`, async t => {
       if (pending === 'expired-loan') await fixture.addLoan(data.students[2]!.id, data.bookId, 481);
       if (pending === 'expired-reservation') await offer(true);
       if (pending === 'orphan-offer') await fixture.database.queueEntry.create({ data: {
@@ -196,12 +190,26 @@ describe('SCRUM-23 con PostgreSQL 17 local exclusivo', { concurrency: false, tim
         await fixture.database.queueEntry.create({ data: { userId: data.students[2]!.id, bookId: data.bookId, state: 'WAITING' } });
       }
       const before = await fixture.snapshot(); const http = await app(t);
-      await fixture.installFault('reject-writes');
-      try {
-        const result = await http.post(); assert.equal(result.status, 503);
+      const result = await http.post();
+      if (pending === 'orphan-offer') {
+        assert.equal(result.status, 503);
         assert.equal(result.body.error.code, 'CIRCULATION_RECONCILIATION_REQUIRED');
-        assert.equal(await fixture.writeAttempts(), 0); assert.deepEqual(await fixture.snapshot(), before);
-      } finally { await fixture.removeHooks(); }
+        assert.deepEqual(await fixture.snapshot(), before);
+      } else {
+        assert.equal(result.status, 201);
+        assert.equal(result.body.entry.state, 'WAITING');
+        if (pending === 'expired-loan') {
+          const expired = await fixture.database.loan.findFirstOrThrow({ where: { userId: data.students[2]!.id, bookId: data.bookId } });
+          assert.ok(expired.closedAt);
+        }
+        if (pending === 'expired-reservation') {
+          assert.equal((await fixture.database.reservation.findFirstOrThrow()).state, 'EXPIRED');
+        }
+        if (pending === 'waiting-with-capacity') {
+          assert.equal((await fixture.database.reservation.findFirstOrThrow()).state, 'HELD');
+          assert.equal(await fixture.database.notificationOutbox.count({ where: { kind: 'TURN_AVAILABLE' } }), 1);
+        }
+      }
     });
   }
 

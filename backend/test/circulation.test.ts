@@ -44,7 +44,7 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
       assert.deepEqual(await circulation.findAvailability([randomUUID()]), []);
     });
 
-    await t.test('descuenta solo préstamos vigentes aunque los vencidos sigan sin cerrar', async () => {
+    await t.test('cierra vencidos y descuenta solo préstamos vigentes', async () => {
       const target = await book();
       const borrowers = await Promise.all([user(), user(), user(), user()]);
       const [active, expired, closed, future] = borrowers;
@@ -53,7 +53,7 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
       await db.loan.create({ data: { userId: closed!.id, bookId: target.id, startedAt: at(-482), dueAt: at(-2), closedAt: at(-1) } });
       await db.loan.create({ data: { userId: future!.id, bookId: target.id, startedAt: at(1), dueAt: at(481) } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 3 }]);
-      assert.equal((await db.loan.findUniqueOrThrow({ where: { id: stale.id } })).closedAt, null);
+      assert.ok((await db.loan.findUniqueOrThrow({ where: { id: stale.id } })).closedAt);
     });
 
     await t.test('descuenta reservas HELD vigentes, no vencidas ni terminales', async () => {
@@ -71,10 +71,12 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
       }
       const before = await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 4, availableCopies: 3 }]);
-      assert.deepEqual(await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } }), before);
+      const after = await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } });
+      assert.equal(after.filter(r => r.state === 'HELD').length, 1);
+      for (const row of before.filter(r => r.state !== 'HELD')) assert.deepEqual(after.find(r => r.id === row.id), row);
     });
 
-    await t.test('la cola elegible retiene solo los cupos que necesita y no crea reservas', async () => {
+    await t.test('la cola recibe reservas para los cupos que necesita', async () => {
       const target = await book(3);
       const waiting = await Promise.all([user(), user()]);
       for (const person of waiting) {
@@ -85,8 +87,8 @@ test('la base compartida calcula cupos solicitables con PostgreSQL real en memor
         userId: terminalPerson.id, bookId: target.id, joinedAt: at(-1), state: 'CANCELLED', closedAt: at(0),
       } });
       assert.deepEqual(await circulation.findAvailability([target.id]), [{ bookId: target.id, totalCopies: 3, availableCopies: 1 }]);
-      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 0);
-      assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'WAITING' } }), 2);
+      assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 2);
+      assert.equal(await db.queueEntry.count({ where: { bookId: target.id, state: 'OFFERED' } }), 2);
     });
 
     await t.test('una espera con cinco préstamos vigentes no retiene capacidad para un turno', async () => {

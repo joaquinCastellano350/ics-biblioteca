@@ -1,5 +1,6 @@
-import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
-import { AccountError } from '../accounts/account-error.js';
+import type { PrismaClient } from '../generated/prisma/client.js';
+import { circulationTransaction } from './circulation-transaction.js';
+import { reconcileBooks } from './reconcile-books.js';
 import type { CirculationQueryRepositoryInterface, PersonalCirculation } from './circulation-query.js';
 
 const publicBook = { id: true, title: true } as const;
@@ -8,14 +9,11 @@ export class CirculationQueryRepository implements CirculationQueryRepositoryInt
   constructor(private readonly database: Pick<PrismaClient, '$transaction'>) {}
 
   async findPersonalCirculation(userId: string): Promise<PersonalCirculation> {
-    return this.database.$transaction(async (tx) => {
-      // La primera lectura establece la instantánea de RepeatableRead.
-      // Todas las fechas se evalúan contra este mismo instante de PostgreSQL.
-      const [clock] = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
-      if (!clock || !(clock.now instanceof Date) || !Number.isFinite(clock.now.getTime())) {
-        throw new AccountError('INTERNAL_ERROR');
-      }
-      const now = clock.now;
+    return circulationTransaction(this.database, async (tx) => {
+      const books = await tx.queueEntry.findMany({
+        where: { userId, state: { in: ['WAITING', 'OFFERED'] } }, select: { bookId: true },
+      });
+      const { now } = await reconcileBooks(tx, books.map(entry => entry.bookId));
       const loans = await tx.loan.findMany({
         where: { userId, closedAt: null, startedAt: { lte: now }, dueAt: { gt: now } },
         orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
@@ -47,13 +45,11 @@ export class CirculationQueryRepository implements CirculationQueryRepositoryInt
       return {
         serverTime: now, loans, waits, reservations,
         // Son restricciones de la instantánea, no una promesa de concesión.
-        // OFFERED sigue bloqueando mientras esté abierta, aunque su oferta
-        // necesite conciliación; no se presenta como reserva vigente por eso.
         requestConstraints: {
           activeLoanCount: loans.length, maxActiveLoans: 5,
           openQueueBookIds: [...new Set(entries.map(entry => entry.bookId))].sort(),
         },
       };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+    });
   }
 }

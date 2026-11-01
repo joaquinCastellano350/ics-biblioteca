@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '../generated/prisma/client.js';
 import { AccountError } from '../accounts/account-error.js';
-import { retryable } from './circulation-repository.js';
+import { circulationTransaction } from './circulation-transaction.js';
+import { reconcileBooks } from './reconcile-books.js';
 import type { QueueRepositoryInterface, QueueResult } from './queue.js';
 
 const openIndex = 'queue_entries_user_book_open_key';
@@ -36,16 +37,7 @@ export class QueueRepository implements QueueRepositoryInterface {
   constructor(private readonly database: Pick<PrismaClient, '$transaction'>) {}
 
   async joinQueue(userId: string, bookId: string): Promise<QueueResult> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await this.database.$transaction(tx => this.join(tx, userId, bookId), {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000,
-        });
-      } catch (error) {
-        if (!retryable(error) && !openEntryCollision(error)) throw error;
-        if (attempt >= 2) throw new AccountError('SERVICE_UNAVAILABLE');
-      }
-    }
+    return circulationTransaction(this.database, tx => this.join(tx, userId, bookId), openEntryCollision);
   }
 
   private async join(tx: Prisma.TransactionClient, userId: string, bookId: string): Promise<QueueResult> {
@@ -57,9 +49,7 @@ export class QueueRepository implements QueueRepositoryInterface {
     if (!locked.length) return { code: 'BOOK_NOT_FOUND' };
     const book = await tx.book.findUnique({ where: { id: bookId }, select: { id: true, title: true, totalCopies: true } });
     if (!book) return { code: 'BOOK_NOT_FOUND' };
-    const [clock] = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
-    if (!clock || !(clock.now instanceof Date) || !Number.isFinite(clock.now.getTime())) throw new AccountError('INTERNAL_ERROR');
-    const now = clock.now;
+    const { now, occupancy: [occupancy] } = await reconcileBooks(tx, [bookId]);
     const publicBook = { id: book.id, title: book.title };
     const open = { bookId, state: { in: ['WAITING', 'OFFERED'] }, closedAt: null };
     const existing = await tx.queueEntry.findFirst({ where: { ...open, userId }, select: entrySelection });
@@ -78,11 +68,7 @@ export class QueueRepository implements QueueRepositoryInterface {
     }
     if (await tx.loan.count({ where: { ...active, userId } }) >= 5) return { code: 'LOAN_LIMIT_REACHED' };
 
-    // Solo lecturas del libro solicitado. No invocar findOccupancyInTransaction:
-    // puede cerrar entradas y no representa la conciliación completa.
-    const loans = await tx.loan.count({ where: { ...active, bookId } });
-    const held = await tx.reservation.count({ where: { bookId, state: 'HELD', closedAt: null, expiresAt: { gt: now } } });
-    const capacity = book.totalCopies - loans - held;
+    const capacity = occupancy!.totalCopies - occupancy!.activeLoans - occupancy!.heldReservations;
     const incoherent = await tx.reservation.count({ where: { bookId, state: 'HELD', OR: [
       { closedAt: { not: null } }, { offeredAt: { gt: now } },
       { queueEntry: { isNot: { state: 'OFFERED', closedAt: null } } },
@@ -90,18 +76,13 @@ export class QueueRepository implements QueueRepositoryInterface {
     if (!Number.isInteger(book.totalCopies) || book.totalCopies < 0 || capacity < 0 || incoherent > 0) {
       throw new AccountError('INTERNAL_ERROR');
     }
-    const expiredLoans = await tx.loan.count({ where: { bookId, closedAt: null, dueAt: { lte: now } } });
-    const expiredReservations = await tx.reservation.count({ where: { bookId, state: 'HELD', expiresAt: { lte: now } } });
     const pendingOffers = await tx.queueEntry.count({ where: { bookId, state: 'OFFERED', closedAt: null,
       NOT: { reservation: { is: { state: 'HELD', closedAt: null, offeredAt: { lte: now }, expiresAt: { gt: now } } } },
     } });
-    const waiting = capacity > 0 ? await tx.queueEntry.count({ where: { bookId, state: 'WAITING', closedAt: null } }) : 0;
-    if (expiredLoans > 0 || expiredReservations > 0 || pendingOffers > 0 || waiting > 0) {
-      return { code: 'CIRCULATION_RECONCILIATION_REQUIRED' };
-    }
+    if (pendingOffers > 0) return { code: 'CIRCULATION_RECONCILIATION_REQUIRED' };
     if (capacity > 0) return { code: 'AVAILABLE_COPIES' };
 
-    // Única escritura de esta operación; conserva todas las entradas anteriores.
+    // La conciliación y la nueva espera se confirman juntas.
     const entry = await tx.queueEntry.create({ data: { userId, bookId, state: 'WAITING', joinedAt: now }, select: entrySelection });
     const position = await this.position(tx, bookId, entry.orderSeq);
     return { serverTime: now, created: true,
