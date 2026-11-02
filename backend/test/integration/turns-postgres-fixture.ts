@@ -7,14 +7,15 @@ import { PrismaClient } from '../../src/generated/prisma/client.js';
 export function turnsConnectionSettings(environment: NodeJS.ProcessEnv = process.env) {
   const raw = environment['TEST_TURNS_DATABASE_URL'];
   if (environment['TURNS_ALLOW_INTEGRATION_WRITES'] !== '1' || !raw
-    || !/^postgres(?:ql)?:\/\/turns_test_admin:[^\s/@?#]+@127\.0\.0\.1:55435\/ics_turns_test$/.test(raw)) {
+    || !/^postgres(?:ql)?:\/\/turns_test_admin:[^\s/@?#]+@127\.0\.0\.1:(55435|45435)\/ics_turns_test$/.test(raw)) {
     throw new Error('Turnos: se requiere habilitar la base local exclusiva de pruebas.');
   }
   let password: string;
   try { password = decodeURIComponent(new URL(raw).password); }
   catch { throw new Error('Credencial temporal de prueba inválida.'); }
   if (!password || password.includes('\0')) throw new Error('Credencial temporal de prueba inválida.');
-  return { host: '127.0.0.1', port: 55435, database: 'ics_turns_test',
+  // 45435 es la alternativa local cuando Hyper-V reserva el rango de 55435 en Windows.
+  return { host: '127.0.0.1', port: Number(new URL(raw).port), database: 'ics_turns_test',
     user: 'turns_test_admin', password, ssl: false as const,
     options: '-c search_path=public -c statement_timeout=10000 -c lock_timeout=5000',
     application_name: 'turns-isolated-integration', connectionTimeoutMillis: 5000 };

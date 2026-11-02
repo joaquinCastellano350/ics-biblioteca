@@ -41,7 +41,7 @@ export async function reconciliationScenarios(t: TestContext, db: PrismaClient) 
       assert.equal(held.expiresAt.getTime() - held.offeredAt.getTime(), 24 * hour);
       const event = await db.notificationOutbox.findUniqueOrThrow({ where: { dedupKey: `reservation:${held.id}:turn` } });
       assert.equal(event.userId, entry.userId); assert.equal(event.state, 'PENDING');
-      assert.deepEqual(event.payload, { bookTitle: target.title, expiresAt: held.expiresAt.toISOString() });
+      assert.deepEqual(event.payload, { bookTitle: target.title, expiresAt: held.expiresAt.toISOString(), acceptancePath: `/turno/${held.id}` });
     }
     const before = await db.reservation.findMany({ where: { bookId: target.id }, orderBy: { id: 'asc' } });
     await reconcile([target.id]);

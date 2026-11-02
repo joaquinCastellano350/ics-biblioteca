@@ -12,7 +12,18 @@ export function notificationMessage(notification: NotificationOutbox, circulatio
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)
     || typeof payload['bookTitle'] !== 'string' || !payload['bookTitle'].trim()) return null;
   const title = `«${payload['bookTitle']}»`;
-  const footer = `Ingresá con tu cuenta para consultar tus préstamos y reservas: ${circulationUrl}`;
+  // Solo nuevos avisos versionan su destino en payload; un reintento histórico
+  // conserva el mensaje que pudo haber recibido ya el proveedor.
+  let actionUrl = circulationUrl;
+  let actionLabel = 'Ver préstamos y reservas';
+  if (notification.kind === 'TURN_AVAILABLE' && payload['acceptancePath'] !== undefined) {
+    if (!notification.reservationId || payload['acceptancePath'] !== `/turno/${notification.reservationId}`) return null;
+    actionUrl = new URL(payload['acceptancePath'], circulationUrl).href;
+    actionLabel = 'Aceptar préstamo';
+  }
+  const footer = actionLabel === 'Aceptar préstamo'
+    ? `Abrí el enlace para aceptar el préstamo. Si hace falta, iniciá sesión y la aceptación continuará automáticamente: ${actionUrl}`
+    : `Ingresá con tu cuenta para consultar tus préstamos y reservas: ${actionUrl}`;
   let subject: string;
   let text: string;
   let heading: string;
@@ -62,7 +73,7 @@ export function notificationMessage(notification: NotificationOutbox, circulatio
   }
   const htmlBody = deadline ? text.replace(`${deadline} (UTC)`, detailValue) : text;
   const html = renderNotificationEmail({ subject, heading, preheader: subject, body: htmlBody,
-    bookTitle: payload['bookTitle'], detailLabel, detailValue, actionUrl: circulationUrl });
+    bookTitle: payload['bookTitle'], detailLabel, detailValue, actionUrl, actionLabel });
   return { to: notification.recipientEmail, idempotencyKey: notification.dedupKey, subject, text: `${text} ${footer}`, html };
 }
 

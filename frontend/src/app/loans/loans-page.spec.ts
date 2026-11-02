@@ -131,7 +131,7 @@ describe('acceso a Mis préstamos', () => {
     }
   });
 
-  it('presenta préstamos con lectura y mantiene esperas y reservas sin acciones de otras historias', async () => {
+  it('presenta lectura y aceptación de reservas sin agregar salida de colas', async () => {
     http.expectOne('/api/auth/session').flush(session);
     await load();
     expect(root.querySelector('.loan-card')?.textContent).toContain('Álgebra privada');
@@ -141,7 +141,8 @@ describe('acceso a Mis préstamos', () => {
     expect(root.querySelector('.reserve-row time')?.getAttribute('datetime')).toBe(circulation.reservations[0].expiresAt);
     expect(root.querySelector('.reserve-row .remaining')?.textContent).toMatch(/1 h 59 min|2 h 0 min/);
     expect(root.querySelector('.reserve-row p-tag')).not.toBeNull();
-    expect(root.querySelector('.reserve-row button, .waiting-item button')).toBeNull();
+    expect(root.querySelector('.reserve-row app-accept-reservation button')?.textContent).toContain('Aceptar préstamo');
+    expect(root.querySelector('.waiting-item button')).toBeNull();
     expect(root.querySelector('.loan-card app-read-book-button button')?.textContent).toContain('Leer online');
   });
 
@@ -161,6 +162,29 @@ describe('acceso a Mis préstamos', () => {
     expect(root.querySelector('.loan-card')).toBeNull();
     expect(root.querySelector('app-read-book-button')).toBeNull();
     expect(tab.close).toHaveBeenCalled();
+  });
+
+  it('acepta desde Mis préstamos, actualiza la lista y conserva el mensaje al quitar la reserva', async () => {
+    http.expectOne('/api/auth/session').flush(session); await load();
+    root.querySelector<HTMLButtonElement>('.reserve-row app-accept-reservation button')!.click();
+    const request = http.expectOne('/api/reservations/reserve/accept');
+    expect(request.request.body).toEqual({});
+    request.flush({ loan: { id: 'new-loan', bookId: 'c', startedAt: session.serverTime, dueAt: '2026-11-13T12:00:00Z' }, created: true, active: true });
+    await load({ ...circulation, reservations: [], loans: [...circulation.loans,
+      { id: 'new-loan', book: { id: 'c', title: 'Reserva de sistemas' }, startedAt: session.serverTime, dueAt: '2026-11-13T12:00:00Z' }] });
+    expect(root.querySelector('.reserve-row')).toBeNull();
+    expect(root.textContent).toContain('Tu préstamo está confirmado.');
+    expect(root.querySelectorAll('.loan-card app-read-book-button').length).toBe(2);
+  });
+
+  it('al rechazar por límite muestra el motivo aunque desaparezca la reserva al actualizar', async () => {
+    http.expectOne('/api/auth/session').flush(session); await load();
+    root.querySelector<HTMLButtonElement>('.reserve-row app-accept-reservation button')!.click();
+    http.expectOne('/api/reservations/reserve/accept').flush({ error: { code: 'RESERVATION_REJECTED_LIMIT' } }, { status: 409, statusText: 'Conflict' });
+    await load({ ...circulation, reservations: [] });
+    expect(root.querySelector('.reserve-row')).toBeNull();
+    expect(root.textContent).toContain('Tu posición se retiró');
+    expect(root.textContent).toContain('el cupo pasó a la siguiente persona elegible');
   });
 
   it('un reloj local desfasado no cambia los plazos calculados desde serverTime', async () => {

@@ -10,6 +10,7 @@ import { BookRepository } from './book/book-repository.js';
 import { SubjectRepository } from './subject/subject-repository.js';
 import { CirculationRepository } from './circulation/circulation-repository.js';
 import { LoanRepository } from './circulation/loan-repository.js';
+import { ReservationRepository } from './circulation/reservation-repository.js';
 import { CirculationQueryRepository } from './circulation/circulation-query-repository.js';
 import { QueueRepository } from './circulation/queue-repository.js';
 import { LoanReadingRepository } from './loan/loan-repository.js';
@@ -28,6 +29,7 @@ const server = createApp({
   books: new BookRepository(database),
   circulation: new CirculationRepository(database),
   loans: new LoanRepository(database),
+  reservations: new ReservationRepository(database),
   circulationQueries: new CirculationQueryRepository(database),
   queue: new QueueRepository(database),
   loanReading: new LoanReadingRepository(database),

@@ -11,6 +11,7 @@ interface NotificationContent {
   detailLabel: string;
   detailValue: string;
   actionUrl: string;
+  actionLabel: string;
 }
 
 function escapeHtml(value: string): string {

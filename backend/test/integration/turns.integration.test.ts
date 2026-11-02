@@ -7,8 +7,9 @@ import { CirculationRepository } from '../../src/circulation/circulation-reposit
 import { LoanRepository } from '../../src/circulation/loan-repository.js';
 import { circulationTransaction } from '../../src/circulation/circulation-transaction.js';
 import { releaseReservation } from '../../src/circulation/reconcile-books.js';
+import { reservationIntegrationScenarios } from './reservation-integration-scenarios.js';
 
-test('SCRUM-25: PostgreSQL 17 aislado y contención entre conexiones', { timeout: 120_000 }, async t => {
+test('SCRUM-25/26: PostgreSQL 17 aislado y contención entre conexiones', { timeout: 120_000 }, async t => {
   const fixture = await openTurnsPostgresFixture();
   const db = fixture.database;
   try {
@@ -55,5 +56,7 @@ test('SCRUM-25: PostgreSQL 17 aislado y contención entre conexiones', { timeout
       assert.equal(await db.reservation.count({ where: { bookId: target.id } }), 2);
       assert.equal((await db.reservation.findUniqueOrThrow({ where: { id: held.id } })).state, 'CANCELLED');
     });
+    await fixture.reset();
+    await reservationIntegrationScenarios(t, db);
   } finally { await fixture.close(); }
 });

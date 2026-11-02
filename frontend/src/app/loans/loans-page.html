@@ -30,6 +30,7 @@
         <a pButton variant="outlined" routerLink="/catalogo">Explorar catálogo</a>
       }
       @case ('authenticated') {
+        @if (acceptanceMessage()) { <p-message severity="info" role="status">{{ acceptanceMessage() }}</p-message> }
         <div class="content-section-header">
           <h2 id="loans-state-title">Tus lecturas, en un solo lugar</h2>
           <p-button label="Actualizar" variant="outlined" type="button" (onClick)="load()"
@@ -55,7 +56,10 @@
                   <p>Aceptá tu reserva antes del <time [attr.datetime]="reservation.expiresAt">{{ date(reservation.expiresAt) }}</time>.</p>
                   <p class="remaining">Tiempo restante: {{ remaining(reservation.expiresAt) }}</p>
                 </div>
-                <p-tag severity="success" value="Cupo reservado" />
+                <div class="reserve-actions">
+                  <p-tag severity="success" value="Cupo reservado" />
+                  <app-accept-reservation [reservationId]="reservation.id" (settled)="acceptanceMessage.set($event)" />
+                </div>
               </article>
             } @empty {
               <p class="empty-state">No tenés reservas disponibles para aceptar.</p>
