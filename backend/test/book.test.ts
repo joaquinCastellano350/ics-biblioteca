@@ -90,6 +90,7 @@ test('books endpoint accepts title, author IDs, and repeated subject IDs', async
       received = criteria;
       return { books: [], total: 0 };
     },
+    findAuthors: async () => [],
   }, async (url) => {
     const response = await fetch(
       `${url}/api/books?title=Redes&authorIds=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&subjectIds=11111111-1111-4111-8111-111111111111&subjectIds=22222222-2222-4222-8222-222222222222`,

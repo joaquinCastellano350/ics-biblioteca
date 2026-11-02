@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import type { PrismaClient } from '../src/generated/prisma/client.js';
+import type { Prisma, PrismaClient } from '../src/generated/prisma/client.js';
 import { ReservationRepository } from '../src/circulation/reservation-repository.js';
 import { CirculationRepository } from '../src/circulation/circulation-repository.js';
 import { LoanRepository } from '../src/circulation/loan-repository.js';
@@ -105,7 +105,7 @@ export async function reservationScenarios(t: TestContext, db: PrismaClient) {
 
   await t.test('un fallo al programar avisos revierte préstamo, consumo y cierre de espera', async () => {
     const { owner, entry, reservation } = await offer();
-    const failing = { $transaction: ((work, options) => db.$transaction(tx => work(new Proxy(tx, {
+    const failing = { $transaction: (<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]) => db.$transaction(tx => work(new Proxy(tx, {
       get(object, key) {
         if (key !== 'notificationOutbox') return Reflect.get(object, key);
         return new Proxy(object.notificationOutbox, { get(outbox, method) {
@@ -124,7 +124,7 @@ export async function reservationScenarios(t: TestContext, db: PrismaClient) {
     const { owner, target, reservation } = await offer();
     const next = await db.queueEntry.create({ data: { userId: (await user()).id, bookId: target.id } });
     let reads = 0;
-    const atBoundary = { $transaction: ((work, options) => db.$transaction(tx => work(new Proxy(tx, {
+    const atBoundary = { $transaction: (<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]) => db.$transaction(tx => work(new Proxy(tx, {
       get(object, key) {
         if (key !== '$queryRaw') return Reflect.get(object, key);
         return (...args: unknown[]) => {

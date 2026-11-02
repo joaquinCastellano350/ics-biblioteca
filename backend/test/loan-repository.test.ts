@@ -100,7 +100,7 @@ test('préstamo directo: reglas persistidas y avisos atómicos', async t => {
     await t.test('fallo antes del commit revierte préstamo y avisos', async () => {
       const student = await user();
       const target = await book();
-      const failing = { $transaction: ((operation, options) => db.$transaction(async tx => {
+      const failing = { $transaction: (<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]): Promise<T> => db.$transaction(async tx => {
         await operation(tx);
         throw new Error('fallo antes del commit');
       }, options)) as PrismaClient['$transaction'] };
@@ -112,7 +112,7 @@ test('préstamo directo: reglas persistidas y avisos atómicos', async t => {
       const student = await user();
       const target = await book();
       let attempts = 0;
-      const retry = { $transaction: ((operation, options) => {
+      const retry = { $transaction: (<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]) => {
         assert.equal(options?.isolationLevel, 'Serializable');
         if (++attempts < 3) return Promise.reject({ meta: { driverAdapterError: { cause: { originalCode: '40001' } } } });
         return db.$transaction(operation, options);
@@ -120,7 +120,7 @@ test('préstamo directo: reglas persistidas y avisos atómicos', async t => {
       assert.ok('loan' in await new LoanRepository(retry).requestLoan(student.id, target.id));
       assert.equal(attempts, 3);
       attempts = 0;
-      const duplicate = { $transaction: ((operation, options) => {
+      const duplicate = { $transaction: (<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]) => {
         if (++attempts === 1) return Promise.reject(new Prisma.PrismaClientKnownRequestError('unique', {
           code: 'P2002', clientVersion: '7.10.1', meta: { modelName: 'Loan' },
         }));

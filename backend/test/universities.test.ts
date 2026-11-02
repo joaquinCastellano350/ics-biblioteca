@@ -3,10 +3,10 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { createApp } from '../src/app.js';
-import type { University } from '../src/accounts/universities.repository.js';
+import type { PublicUser } from '../src/accounts/accounts.repository.js';
 
 test('GET /api/universities es público y conserva UUID, nombres y orden del repositorio', async (t) => {
-  const universities: University[] = [
+  const universities: PublicUser['university'][] = [
     { id: '00000000-0000-4000-8000-000000000001', name: 'Facultad Regional Avellaneda (Buenos Aires)' },
     { id: '00000000-0000-4000-8000-000000000007', name: 'Facultad Regional Córdoba (Córdoba)' },
   ];

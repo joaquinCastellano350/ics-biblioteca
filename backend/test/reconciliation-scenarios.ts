@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import type { PrismaClient } from '../src/generated/prisma/client.js';
+import type { Prisma, PrismaClient } from '../src/generated/prisma/client.js';
 import { circulationTransaction } from '../src/circulation/circulation-transaction.js';
 import { reconcileBooks, releaseReservation, type ReservationReleaseReason } from '../src/circulation/reconcile-books.js';
 
@@ -124,7 +124,7 @@ export async function reconciliationScenarios(t: TestContext, db: PrismaClient) 
     await db.$executeRaw`INSERT INTO loans (id, user_id, book_id, started_at, due_at)
       SELECT gen_random_uuid(), ${owner.id}::uuid, ${target.id}::uuid, t, t + interval '480 hours'
       FROM (SELECT statement_timestamp() - interval '481 hours' AS t) clock`;
-    const failing = { $transaction: ((work, options) => db.$transaction(tx => work(new Proxy(tx, {
+    const failing = { $transaction: (<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]) => db.$transaction(tx => work(new Proxy(tx, {
       get(object, key) {
         if (key !== 'notificationOutbox') return Reflect.get(object, key);
         return new Proxy(object.notificationOutbox, { get(outbox, method) {

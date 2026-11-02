@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { AuthService } from '../auth/auth.service';
+import { map } from 'rxjs';
 
 interface QueueEntryBase {
   readonly id: string;
@@ -27,5 +28,15 @@ export class QueueService {
     return this.auth.protectedRequest(() => this.http.post<QueueResponse>('/api/queue-entries', { bookId }, {
       headers: { 'X-Biblioteca-Request': '1' },
     }));
+  }
+
+  cancel(entryId: string) {
+    return this.auth.protectedRequest(() => this.http.post<void>(
+      `/api/queue-entries/${encodeURIComponent(entryId)}/cancel`, {}, {
+        headers: { 'X-Biblioteca-Request': '1', 'Content-Type': 'application/json' }, observe: 'response',
+      },
+    ).pipe(map(response => {
+      if (response.status !== 204) throw new Error('No se confirmó la salida de la cola.');
+    })));
   }
 }

@@ -25,6 +25,63 @@ describe('QueueService: HTTP simulado', () => {
   afterEach(() => { try { http.verify(); } finally { TestBed.resetTestingModule(); } });
   function authenticate(value = session) { auth.restore(); http.expectOne('/api/auth/session').flush(value); }
 
+  it('cancela con cuerpo vacío JSON, sin identidad adicional, y exige 204', () => {
+    authenticate();
+    const next = vi.fn();
+    service.cancel('entry').subscribe(next);
+    const request = http.expectOne('/api/queue-entries/entry/cancel');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({});
+    expect(request.request.headers.get('Content-Type')).toBe('application/json');
+    expect(request.request.headers.get('X-Biblioteca-Request')).toBe('1');
+    expect(request.request.headers.has('Authorization')).toBe(false);
+    expect(request.request.params.keys()).toEqual([]);
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    expect(next).toHaveBeenCalledExactlyOnceWith(undefined);
+  });
+
+  it('no interpreta un 200 como cancelación confirmada', () => {
+    authenticate();
+    const next = vi.fn(); const error = vi.fn();
+    service.cancel('entry').subscribe({ next, error });
+    http.expectOne('/api/queue-entries/entry/cancel').flush({});
+    expect(next).not.toHaveBeenCalled(); expect(error).toHaveBeenCalledOnce();
+  });
+
+  it('no cancela automáticamente después del login del visitante', () => {
+    auth.restore(); http.expectOne('/api/auth/session').flush({}, { status: 401, statusText: 'Unauthorized' });
+    service.cancel('entry').subscribe();
+    expect(auth.loginRequested()).toBe(true);
+    http.expectNone('/api/queue-entries/entry/cancel');
+    authenticate();
+    http.expectNone('/api/queue-entries/entry/cancel');
+  });
+
+  for (const status of [503, 0]) {
+    it(`conserva la sesión ante un error de cancelación ${status}, sin reintentar`, () => {
+      authenticate(); const error = vi.fn(); const next = vi.fn();
+      service.cancel('entry').subscribe({ error, next });
+      const request = http.expectOne('/api/queue-entries/entry/cancel');
+      if (status === 0) request.error(new ProgressEvent('error'));
+      else request.flush({ error: { code: 'SERVICE_UNAVAILABLE' } }, { status, statusText: 'Unavailable' });
+      expect(error).toHaveBeenCalledOnce(); expect(next).not.toHaveBeenCalled();
+      expect(auth.status()).toBe('authenticated');
+      http.expectNone('/api/queue-entries/entry/cancel');
+    });
+  }
+
+  for (const change of ['logout', 'account']) {
+    it(`ignora una cancelación tardía tras ${change}`, () => {
+      authenticate(); const next = vi.fn(); service.cancel('entry').subscribe(next);
+      const old = http.expectOne('/api/queue-entries/entry/cancel');
+      if (change === 'logout') {
+        auth.logout().subscribe(); http.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+      } else authenticate({ ...session, user: { ...session.user, id: 'bea' } });
+      old.flush(null, { status: 204, statusText: 'No Content' });
+      expect(next).not.toHaveBeenCalled();
+    });
+  }
+
   for (const status of [201, 200]) {
     it(`envía solo bookId y el encabezado de protección; acepta ${status}`, () => {
       authenticate();

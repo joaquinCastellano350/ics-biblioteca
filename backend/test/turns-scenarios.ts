@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
-import type { PrismaClient } from '../src/generated/prisma/client.js';
+import type { Prisma, PrismaClient } from '../src/generated/prisma/client.js';
 import { CirculationRepository } from '../src/circulation/circulation-repository.js';
 import { circulationTransaction } from '../src/circulation/circulation-transaction.js';
 import { releaseReservation } from '../src/circulation/reconcile-books.js';
@@ -114,7 +114,7 @@ export async function turnsScenarios(t: TestContext, db: PrismaClient) {
     const target = await book(); const first = await queue(target.id); const next = await queue(target.id);
     for (let i = 0; i < 5; i++) await new LoanRepository(db).requestLoan(first.userId, (await book()).id);
     // El fallo ocurre en la escritura del aviso de turno, después del rechazo y su aviso.
-    const failing = { $transaction: ((work, options) => db.$transaction(tx => work(new Proxy(tx, {
+    const failing = { $transaction: (<T>(work: (tx: Prisma.TransactionClient) => Promise<T>, options?: Parameters<PrismaClient['$transaction']>[1]) => db.$transaction(tx => work(new Proxy(tx, {
       get(object, key) {
         if (key !== 'notificationOutbox') return Reflect.get(object, key);
         return new Proxy(object.notificationOutbox, { get(outbox, method) {

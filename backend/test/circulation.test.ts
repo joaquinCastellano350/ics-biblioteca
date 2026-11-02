@@ -20,8 +20,10 @@ test('la base compartida procesa vencimientos y calcula cupos con PostgreSQL rea
   const repository = new CirculationRepository(db);
   const circulation = new CirculationController(repository);
   try {
-    const [{ now }] = await db.$queryRaw<{ now: Date }[]>`SELECT statement_timestamp() AS now`;
-    const at = (hours: number) => new Date(now!.getTime() + hours * 3_600_000);
+    const [clock] = await db.$queryRaw<{ now: Date }[]>`SELECT statement_timestamp() AS now`;
+    assert.ok(clock, 'PostgreSQL debe devolver una fila con el reloj de la transacción');
+    const { now } = clock;
+    const at = (hours: number) => new Date(now.getTime() + hours * 3_600_000);
     const university = await db.university.create({ data: { name: 'Universidad de prueba' } });
     let sequence = 0;
     const user = () => db.user.create({ data: {

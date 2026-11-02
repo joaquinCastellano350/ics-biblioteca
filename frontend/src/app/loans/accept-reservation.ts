@@ -24,7 +24,7 @@ interface Outcome { key: string; message?: string; result?: AcceptedReservation;
     } @else {
       @if (outcome()?.message; as message) { <p-message severity="error" role="alert">{{ message }}</p-message> }
       @if (!outcome()?.terminal) {
-        <button pButton type="button" (click)="accept()" [disabled]="pending() || auth.authenticating() || auth.status() === 'loading' || auth.status() === 'unavailable'" [attr.aria-busy]="pending()">
+        <button pButton type="button" (click)="accept()" [disabled]="blocked() || pending() || auth.authenticating() || auth.status() === 'loading' || auth.status() === 'unavailable'" [attr.aria-busy]="pending()">
           {{ pending() ? 'Aceptando…' : 'Aceptar préstamo' }}
         </button>
       }
@@ -39,6 +39,7 @@ interface Outcome { key: string; message?: string; result?: AcceptedReservation;
 export class AcceptReservation {
   readonly reservationId = input.required<string>();
   readonly automatic = input(false);
+  readonly blocked = input(false);
   readonly settled = output<string>();
   protected readonly auth = inject(AuthService);
   private readonly service = inject(ReservationService);
@@ -53,7 +54,7 @@ export class AcceptReservation {
     return JSON.stringify([this.reservationId(), session?.user.id, session?.session.createdAt, session?.session.expiresAt]);
   });
   protected readonly outcome = computed(() => this.state()?.key === this.key() ? this.state() : null);
-  protected readonly pending = computed(() => this.busyKey() === this.key());
+  readonly pending = computed(() => this.busyKey() === this.key());
 
   constructor() {
     effect(() => {
@@ -77,7 +78,7 @@ export class AcceptReservation {
   }
 
   protected accept(): void {
-    if (this.pending() || !this.auth.ensureAuthenticated()) return;
+    if (this.blocked() || this.pending() || !this.auth.ensureAuthenticated()) return;
     const key = this.key();
     this.attemptedKey = key;
     this.state.set(null);
