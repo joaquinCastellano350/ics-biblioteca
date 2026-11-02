@@ -9,6 +9,7 @@ import { AccountsService } from '../../src/accounts/accounts.service.js';
 import { PrismaAccountsRepository } from '../../src/accounts/prisma-accounts.repository.js';
 import { QueueRepository } from '../../src/circulation/queue-repository.js';
 import { LoanRepository } from '../../src/circulation/loan-repository.js';
+import { ReservationRepository } from '../../src/circulation/reservation-repository.js';
 import { CirculationRepository } from '../../src/circulation/circulation-repository.js';
 import { circulationTransaction } from '../../src/circulation/circulation-transaction.js';
 import { reconcileBooks } from '../../src/circulation/reconcile-books.js';
@@ -38,11 +39,12 @@ describe('SCRUM-24: cancelación y reasignación en PostgreSQL 17 exclusivo', { 
     try { await removeFault(); } finally { await fixture.close(); }
   });
 
-  async function http(t: TestContext, database: Database = fixture.database) {
+  async function http(t: TestContext, database: Database = fixture.database, acceptanceDatabase: Database = database) {
     const unexpected = async (): Promise<never> => { throw new Error('Servicio externo no permitido en integración'); };
     const server = createApp({ checkDatabase: unexpected, checkStorage: unexpected,
       accounts: new AccountsService(new PrismaAccountsRepository(fixture.database)),
       queue: new QueueRepository(database), loans: new LoanRepository(database),
+      reservations: new ReservationRepository(acceptanceDatabase),
     }).listen(0, '127.0.0.1');
     t.after(async () => {
       server.closeAllConnections();
@@ -66,6 +68,7 @@ describe('SCRUM-24: cancelación y reasignación en PostgreSQL 17 exclusivo', { 
     return {
       cancel: (student: number, entryId: string) => post(student, `/api/queue-entries/${entryId}/cancel`, {}),
       loan: (student: number, bookId: string) => post(student, '/api/loans', { bookId }),
+      accept: (student: number, reservationId: string) => post(student, `/api/reservations/${reservationId}/accept`, {}),
     };
   }
 
@@ -220,6 +223,160 @@ describe('SCRUM-24: cancelación y reasignación en PostgreSQL 17 exclusivo', { 
       assert.ok(pids.size >= 2, 'la carrera debe usar conexiones PostgreSQL distintas');
       assert.ok(attempts() >= 2 && attempts() <= 6, 'dos operaciones con hasta tres intentos completos cada una');
       return result;
+    });
+  }
+
+  async function acceptanceCancellationRace(t: TestContext, target: Offered, winner: 'accept' | 'cancel') {
+    return withConcurrentTransactions(fixture.database, async (database, totalAttempts) => {
+      let winnerLocked!: (pid: number) => void;
+      let loserConnected!: (pid: number) => void;
+      let releaseWinner!: () => void;
+      const locked = new Promise<number>(resolve => { winnerLocked = resolve; });
+      const connected = new Promise<number>(resolve => { loserConnected = resolve; });
+      const release = new Promise<void>(resolve => { releaseWinner = resolve; });
+      const attempts = { accept: 0, cancel: 0 };
+      const commits: Array<'accept' | 'cancel'> = [];
+      let coordinationError: Error | undefined;
+      let fail!: (error: Error) => void;
+      const failed = new Promise<never>((_resolve, reject) => { fail = reject; });
+      void failed.catch(() => {});
+      // Deadline de fallo: la sincronización depende del bloqueo observado, no del tiempo.
+      const deadline = setTimeout(() => {
+        coordinationError = new Error('No se observó la contención de la reserva.');
+        fail(coordinationError);
+      }, 8_000);
+      const bounded = <T>(promise: Promise<T>) => Promise.race([promise, failed]);
+      const forOperation = (operation: 'accept' | 'cancel'): Database => new Proxy(database, {
+        get(object, key, receiver) {
+          if (key !== '$transaction') return Reflect.get(object, key, receiver);
+          return async <R>(work: (tx: Prisma.TransactionClient) => Promise<R>, options?: Parameters<PrismaClient['$transaction']>[1]) => {
+            const attempt = ++attempts[operation];
+            assert.ok(attempt <= 3, 'cada operación conserva el límite de tres intentos');
+            assert.deepEqual(options, { isolationLevel: 'Serializable', maxWait: 10_000, timeout: 30_000 });
+            const result = await object.$transaction(async tx => {
+              if (attempt === 1) {
+                const [connection] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+                assert.ok(connection);
+                if (operation === winner) {
+                  // Adquiere el mismo primer bloqueo del protocolo productivo.
+                  // work() vuelve a adquirirlo en esta transacción, sin alterar sus consultas ni resultados.
+                  const owners = await tx.$queryRaw<{ id: string }[]>`
+                    SELECT id FROM users WHERE id = ${data.students[0]!.id}::uuid FOR UPDATE`;
+                  assert.deepEqual(owners, [{ id: data.students[0]!.id }]);
+                  winnerLocked(connection.pid);
+                  await bounded(release);
+                } else {
+                  loserConnected(connection.pid);
+                  await bounded(locked);
+                }
+              }
+              return work(tx);
+            }, options);
+            // $transaction solo resuelve después del COMMIT real.
+            commits.push(operation);
+            return result;
+          };
+        },
+      });
+      const requests: Promise<unknown>[] = [];
+      let observation: Promise<void> | undefined;
+      try {
+        const api = await http(t, forOperation('cancel'), forOperation('accept'));
+        const accepting = api.accept(0, target.held.id);
+        const cancelling = api.cancel(0, target.entries[0]!.id);
+        requests.push(accepting, cancelling);
+        const responses = Promise.all([accepting, cancelling]);
+        void responses.catch(() => {});
+        const [winnerPid, loserPid] = await bounded(Promise.all([locked, connected]));
+        assert.notEqual(winnerPid, loserPid, 'las dos transacciones usan conexiones PostgreSQL independientes');
+        // El observador de la fixture es una tercera conexión. Comprueba contención
+        // efectiva del SELECT FOR UPDATE del perdedor; nunca usa pg_sleep ni pausas.
+        observation = (async () => {
+          for (;;) {
+            if (coordinationError) throw coordinationError;
+            const [state] = await fixture.query<{ blocked: boolean }>(
+              'SELECT $1::int = ANY(pg_blocking_pids($2::int)) AS blocked', [winnerPid, loserPid]);
+            assert.ok(state);
+            if (state.blocked) return;
+            if (commits.length) throw new Error('Se confirmó una operación antes de comprobar la contención.');
+          }
+        })();
+        await bounded(observation);
+        assert.deepEqual(commits, []);
+        clearTimeout(deadline);
+        releaseWinner();
+        const [accept, cancel] = await responses;
+        assert.deepEqual(commits, winner === 'accept' ? ['accept', 'cancel'] : ['cancel', 'accept']);
+        assert.ok(attempts.accept >= 1 && attempts.accept <= 3);
+        assert.ok(attempts.cancel >= 1 && attempts.cancel <= 3);
+        assert.ok(totalAttempts() >= 3 && totalAttempts() <= 6, 'la instantánea perdedora requiere reintento completo y limitado');
+        return { accept, cancel };
+      } finally {
+        clearTimeout(deadline);
+        coordinationError ??= new Error('Finalizó la coordinación de esta carrera.');
+        releaseWinner();
+        // No dejar transacciones o peticiones vivas si falla una barrera o aserción.
+        await Promise.allSettled([...requests, ...(observation ? [observation] : [])]);
+      }
+    });
+  }
+
+  for (const winner of ['accept', 'cancel'] as const) {
+    it(`aceptar y cancelar la misma reserva con conexiones independientes: gana ${winner}`, async t => {
+      const target = await offered(); const db = fixture.database;
+      const historical = await db.notificationOutbox.findMany({ where: { reservationId: target.held.id }, orderBy: { id: 'asc' } });
+      const { accept, cancel } = await acceptanceCancellationRace(t, target, winner);
+      if (winner === 'accept') {
+        assert.equal(accept.status, 201); assert.equal(cancel.status, 409);
+        assert.equal(errorCode(cancel), 'QUEUE_ENTRY_FULFILLED');
+        const loan = await db.loan.findUniqueOrThrow({ where: { reservationId: target.held.id } });
+        const body: unknown = JSON.parse(accept.text);
+        assert.ok(body && typeof body === 'object' && 'loan' in body && body.loan && typeof body.loan === 'object'
+          && 'id' in body.loan && body.loan.id === loan.id && 'created' in body && body.created === true
+          && 'active' in body && body.active === true);
+        assert.equal(loan.userId, data.students[0]!.id); assert.equal(loan.bookId, target.bookId);
+        assert.equal(loan.closedAt, null); assert.equal(loan.dueAt.getTime() - loan.startedAt.getTime(), 480 * 3_600_000);
+        assert.equal(await db.loan.count({ where: { bookId: target.bookId } }), 1);
+        const reservation = await db.reservation.findUniqueOrThrow({ where: { id: target.held.id } });
+        const entry = await db.queueEntry.findUniqueOrThrow({ where: { id: target.entries[0]!.id } });
+        assert.equal(reservation.state, 'CONSUMED'); assert.equal(entry.state, 'FULFILLED');
+        assert.equal(reservation.queueEntryId, entry.id); assert.equal(reservation.userId, loan.userId);
+        assert.equal(reservation.bookId, loan.bookId); assert.equal(entry.userId, loan.userId); assert.equal(entry.bookId, loan.bookId);
+        assert.deepEqual(reservation.closedAt, loan.startedAt); assert.deepEqual(entry.closedAt, loan.startedAt);
+        assert.equal(await db.reservation.count({ where: { bookId: target.bookId } }), 1);
+        assert.equal(await db.reservation.count({ where: { bookId: target.bookId, state: 'HELD' } }), 0);
+        assert.equal(await db.queueEntry.count({ where: { bookId: target.bookId, state: 'OFFERED' } }), 0);
+        const waiting = await db.queueEntry.findMany({ where: { id: { in: target.entries.slice(1).map(item => item.id) } } });
+        assert.equal(waiting.length, 2); assert.ok(waiting.every(item => item.state === 'WAITING' && item.closedAt === null));
+        const notices = await db.notificationOutbox.findMany({ where: { loanId: loan.id } });
+        assert.equal(notices.length, 3); assert.equal(new Set(notices.map(item => item.dedupKey)).size, 3);
+        assert.deepEqual(notices.map(item => item.kind).sort(), ['LOAN_DAY_10', 'LOAN_DUE_IN_3_DAYS', 'LOAN_EXPIRED']);
+        assert.equal(await db.notificationOutbox.count({ where: { kind: 'TURN_AVAILABLE', reservation: { bookId: target.bookId } } }), 1);
+        const before = await fixture.snapshot(); const replay = await http(t);
+        const denied = await replay.cancel(0, target.entries[0]!.id);
+        assert.equal(denied.status, 409); assert.equal(errorCode(denied), 'QUEUE_ENTRY_FULFILLED');
+        const repeated = await replay.accept(0, target.held.id);
+        assert.equal(repeated.status, 200);
+        const result: unknown = JSON.parse(repeated.text);
+        assert.ok(result && typeof result === 'object' && 'created' in result && result.created === false
+          && 'loan' in result && result.loan && typeof result.loan === 'object' && 'id' in result.loan && result.loan.id === loan.id);
+        assert.deepEqual(await fixture.snapshot(), before);
+        assert.deepEqual(await db.loan.findUniqueOrThrow({ where: { id: loan.id } }), loan);
+      } else {
+        assert.equal(cancel.status, 204); assert.equal(accept.status, 409);
+        assert.equal(errorCode(accept), 'RESERVATION_CANCELLED');
+        const successor = await reassigned(target);
+        const successorEntry = await db.queueEntry.findUniqueOrThrow({ where: { id: successor.queueEntryId } });
+        assert.equal(successorEntry.state, 'OFFERED'); assert.equal(successorEntry.closedAt, null);
+        assert.equal(successorEntry.userId, successor.userId); assert.equal(successorEntry.bookId, successor.bookId);
+        assert.equal(await db.loan.count({ where: { reservationId: target.held.id } }), 0);
+        const before = await fixture.snapshot(); const replay = await http(t);
+        assert.equal((await replay.cancel(0, target.entries[0]!.id)).status, 204);
+        const repeated = await replay.accept(0, target.held.id);
+        assert.equal(repeated.status, 409); assert.equal(errorCode(repeated), 'RESERVATION_CANCELLED');
+        assert.deepEqual(await fixture.snapshot(), before);
+      }
+      assert.deepEqual(await db.notificationOutbox.findMany({ where: { reservationId: target.held.id }, orderBy: { id: 'asc' } }), historical);
     });
   }
 
