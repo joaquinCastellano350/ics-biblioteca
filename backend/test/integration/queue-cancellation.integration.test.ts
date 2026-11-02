@@ -94,6 +94,93 @@ describe('SCRUM-24: cancelación y reasignación en PostgreSQL 17 exclusivo', { 
   }
   type Offered = Awaited<ReturnType<typeof offered>>;
 
+  async function waiting(expiredLoan = false, count = 3) {
+    const bookId = await fixture.createBook(); const entries = [];
+    for (const student of data.students.slice(0, count)) {
+      entries.push(await fixture.database.queueEntry.create({ data: { userId: student.id, bookId } }));
+    }
+    const expiredId = expiredLoan ? await fixture.addLoan(data.students[3]!.id, bookId, 481) : null;
+    return { bookId, entries, expiredId };
+  }
+
+  async function cancelledWait(target: Awaited<ReturnType<typeof waiting>>, canHaveHistoricalOffer = false) {
+    const db = fixture.database;
+    const cancelled = await db.queueEntry.findUniqueOrThrow({ where: { id: target.entries[0]!.id } });
+    assert.equal(cancelled.state, 'CANCELLED'); assert.ok(cancelled.closedAt);
+    assert.equal(await db.reservation.count({ where: { queueEntryId: cancelled.id, state: 'HELD' } }), 0);
+    if (!canHaveHistoricalOffer) {
+      assert.equal(await db.reservation.count({ where: { queueEntryId: cancelled.id } }), 0);
+      assert.equal(await db.notificationOutbox.count({ where: { reservation: { queueEntryId: cancelled.id } } }), 0);
+    }
+    const held = await db.reservation.findMany({ where: { bookId: target.bookId, state: 'HELD' } });
+    assert.equal(held.length, target.entries.length > 1 ? 1 : 0);
+    if (target.entries.length > 1) {
+      assert.equal(held[0]!.queueEntryId, target.entries[1]!.id);
+      assert.equal(await db.notificationOutbox.count({ where: { reservationId: held[0]!.id, kind: 'TURN_AVAILABLE' } }), 1);
+    }
+    if (target.expiredId) assert.ok((await db.loan.findUniqueOrThrow({ where: { id: target.expiredId } })).closedAt);
+  }
+
+  for (const expired of [false, true]) {
+    it(`WAITING HTTP: cancela antes de conciliar, no recibe oferta y atiende FIFO; vencido=${expired}`, async t => {
+      const target = await waiting(expired); const api = await http(t);
+      assert.equal((await api.cancel(0, target.entries[0]!.id)).status, 204);
+      await cancelledWait(target);
+      const before = await fixture.snapshot();
+      assert.equal((await api.cancel(0, target.entries[0]!.id)).status, 204);
+      assert.deepEqual(await fixture.snapshot(), before);
+    });
+  }
+
+  it('WAITING sin sucesor: cierra vencido y deja el cupo libre sin reserva', async t => {
+    const target = await waiting(true, 1); const api = await http(t);
+    assert.equal((await api.cancel(0, target.entries[0]!.id)).status, 204);
+    await cancelledWait(target);
+    assert.equal(await fixture.database.reservation.count({ where: { bookId: target.bookId } }), 0);
+  });
+
+  it('WAITING ajena o inexistente no dispara conciliación ni escrituras', async t => {
+    const target = await waiting(true); const before = await fixture.snapshot(); const api = await http(t);
+    const foreign = await api.cancel(1, target.entries[0]!.id); const missing = await api.cancel(1, randomUUID());
+    assert.equal(foreign.status, 404); assert.equal(missing.status, 404); assert.equal(foreign.text, missing.text);
+    assert.deepEqual(await fixture.snapshot(), before);
+  });
+
+  for (const table of ['reservations', 'notification_outbox'] as const) {
+    it(`WAITING: fallo de ${table} revierte cancelación, cierre vencido y oferta`, async t => {
+      const target = await waiting(true); const before = await fixture.snapshot(); const api = await http(t);
+      await installFault(table, 'rollback');
+      try {
+        const response = await api.cancel(0, target.entries[0]!.id);
+        assert.equal(response.status, 500); assert.equal(errorCode(response), 'INTERNAL_ERROR');
+        assert.deepEqual(await fixture.snapshot(), before);
+      } finally { await removeFault(); }
+      assert.equal((await api.cancel(0, target.entries[0]!.id)).status, 204);
+      await cancelledWait(target);
+    });
+  }
+
+  for (const competing of ['reconciliation', 'loan'] as const) {
+    it(`WAITING cancelación concurrente con ${competing}: sin doble oferta ni salto de cola`, async t => {
+      const target = await waiting(true);
+      await concurrent(async database => {
+        const api = await http(t, database);
+        if (competing === 'reconciliation') {
+          const [cancel] = await Promise.all([api.cancel(0, target.entries[0]!.id),
+            new CirculationRepository(database).findOccupancy([target.bookId])]);
+          assert.equal(cancel.status, 204);
+        } else {
+          const [cancel, loan] = await Promise.all([api.cancel(0, target.entries[0]!.id), api.loan(3, target.bookId)]);
+          assert.equal(cancel.status, 204); assert.equal(loan.status, 409);
+          assert.equal(errorCode(loan), 'NO_AVAILABLE_COPIES');
+        }
+      });
+      // Si la otra transacción se serializó antes, puede existir una oferta histórica cancelada.
+      await cancelledWait(target, true);
+      assert.equal(await fixture.database.loan.count({ where: { bookId: target.bookId, closedAt: null } }), 0);
+    });
+  }
+
   async function reassigned(target: Offered, successor = 1) {
     const db = fixture.database;
     const old = await db.reservation.findUniqueOrThrow({ where: { id: target.held.id } });

@@ -90,8 +90,8 @@ test('HTTP 201: contrato público, fechas ISO, no-store y ninguna cookie ni dato
   assert.deepEqual(f.calls, [{ userId: 'ana', bookId }]);
 });
 
-for (const fails of [false, true]) {
-  test(`cancelación HTTP espera el commit/reasignación y oculta al sucesor; fallo=${fails}`, async t => {
+for (const failure of [null, 'conciliación', 'reserva sucesora', 'outbox']) {
+  test(`cancelación HTTP espera conciliación y commit, sin datos del sucesor; fallo=${failure}`, async t => {
     let release!: () => void; let fail!: (error: Error) => void; let started!: () => void;
     const began = new Promise<void>(resolve => { started = resolve; });
     const gate = new Promise<void>((resolve, reject) => { release = resolve; fail = reject; });
@@ -104,13 +104,13 @@ for (const fails of [false, true]) {
     await began;
     assert.equal(responded, false);
     assert.deepEqual(f.cancelCalls, [{ userId: 'ana', entryId }]);
-    if (fails) fail(new Error('outbox: datos privados del sucesor'));
+    if (failure) fail(new Error(`${failure}: datos privados del sucesor`));
     else release();
     const response = await pending;
-    assert.equal(response.status, fails ? 500 : 204);
+    assert.equal(response.status, failure ? 500 : 204);
     assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.equal(response.headers.get('set-cookie'), null);
-    if (fails) assert.deepEqual(await response.json(), { error: { code: 'INTERNAL_ERROR', message: 'No se pudo completar la operación.' } });
+    if (failure) assert.deepEqual(await response.json(), { error: { code: 'INTERNAL_ERROR', message: 'No se pudo completar la operación.' } });
     else assert.equal(await response.text(), '');
   });
 }

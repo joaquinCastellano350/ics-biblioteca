@@ -99,13 +99,12 @@ export class QueueRepository implements QueueRepositoryInterface {
       return { closed: true };
     }
     if (reservation) throw new AccountError('INTERNAL_ERROR');
-    const book = await tx.book.findUnique({ where: { id: bookId }, select: { totalCopies: true } });
-    if (!book) throw new AccountError('INTERNAL_ERROR');
-    const availability = await this.queueAvailability(tx, bookId, clock.now, book.totalCopies);
-    if (availability.pending) return { code: 'CIRCULATION_RECONCILIATION_REQUIRED' };
     const updated = await tx.queueEntry.updateMany({ where: { id: entryId, userId, bookId, state: 'WAITING', closedAt: null },
       data: { state: 'CANCELLED', closedAt: clock.now } });
     if (updated.count !== 1) throw new AccountError('SERVICE_UNAVAILABLE');
+    // Retirar primero al saliente: la conciliación no debe ofrecerle este cupo.
+    // Toda oferta y su aviso se confirman junto con la cancelación, o se revierten.
+    await reconcileBooks(tx, [bookId]);
     return { closed: true };
   }
 
@@ -156,28 +155,6 @@ export class QueueRepository implements QueueRepositoryInterface {
     const position = await this.position(tx, bookId, entry.orderSeq);
     return { serverTime: now, created: true,
       entry: { id: entry.id, book: publicBook, joinedAt: entry.joinedAt, state: 'WAITING', position } };
-  }
-
-  /** Cancelación inicial: solo lecturas; rechaza conciliación pendiente sin reasignar cupos. */
-  private async queueAvailability(tx: Prisma.TransactionClient, bookId: string, now: Date, totalCopies: number) {
-    const active = { closedAt: null, startedAt: { lte: now }, dueAt: { gt: now } };
-    const loans = await tx.loan.count({ where: { ...active, bookId } });
-    const held = await tx.reservation.count({ where: { bookId, state: 'HELD', closedAt: null, expiresAt: { gt: now } } });
-    const capacity = totalCopies - loans - held;
-    const incoherent = await tx.reservation.count({ where: { bookId, state: 'HELD', OR: [
-      { closedAt: { not: null } }, { offeredAt: { gt: now } },
-      { queueEntry: { isNot: { state: 'OFFERED', closedAt: null } } },
-    ] } });
-    if (!Number.isInteger(totalCopies) || totalCopies < 0 || capacity < 0 || incoherent > 0) {
-      throw new AccountError('INTERNAL_ERROR');
-    }
-    const expiredLoans = await tx.loan.count({ where: { bookId, closedAt: null, dueAt: { lte: now } } });
-    const expiredReservations = await tx.reservation.count({ where: { bookId, state: 'HELD', expiresAt: { lte: now } } });
-    const pendingOffers = await tx.queueEntry.count({ where: { bookId, state: 'OFFERED', closedAt: null,
-      NOT: { reservation: { is: { state: 'HELD', closedAt: null, offeredAt: { lte: now }, expiresAt: { gt: now } } } },
-    } });
-    const waiting = capacity > 0 ? await tx.queueEntry.count({ where: { bookId, state: 'WAITING', closedAt: null } }) : 0;
-    return { capacity, pending: expiredLoans > 0 || expiredReservations > 0 || pendingOffers > 0 || waiting > 0 };
   }
 
   private async position(tx: Prisma.TransactionClient, bookId: string, orderSeq: bigint): Promise<number> {

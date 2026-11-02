@@ -130,17 +130,24 @@ test('unirse a cola integra conciliación, repetición y validaciones persistida
 function cancellationFixture(options: {
   entries?: Entry[]; missingUser?: boolean; missingBook?: boolean; clock?: Date | null;
   revalidated?: Partial<Entry> | 'missing'; associatedReservation?: boolean; reservation?: CancellationReservation;
-  totalCopies?: number; activeBookLoans?: number; held?: number; incoherent?: number;
-  expiredLoans?: number; expiredReservations?: number; pendingOffers?: number;
+  totalCopies?: number; activeBookLoans?: number; held?: number; reconciliationError?: unknown;
   transactionErrors?: unknown[]; updateErrors?: unknown[]; commitError?: unknown; updateCount?: number;
 } = {}) {
   const entries = structuredClone(options.entries ?? [entry({ id: cancelId, userId })]);
   const locks: string[] = []; const writes: Prisma.QueueEntryUpdateManyArgs[] = [];
-  const transactions: unknown[] = []; const reads: string[] = [];
+  const transactions: unknown[] = []; const reads: string[] = []; const reconciliations: string[] = [];
   const errors = [...(options.transactionErrors ?? [])]; const updateErrors = [...(options.updateErrors ?? [])];
   const changes: Array<() => void> = [];
   const tx = {
-    async $queryRaw(strings: TemplateStringsArray, ...values: unknown[]) {
+    async $queryRaw(strings: TemplateStringsArray | Prisma.Sql, ...values: unknown[]) {
+      if (!Array.isArray(strings)) {
+        const query = strings as Prisma.Sql;
+        assert.match(query.sql, /SELECT id FROM books WHERE id IN/);
+        assert.deepEqual(query.values, [bookId]);
+        assert.equal(changes.length, 1, 'la cancelación precede a la conciliación');
+        reconciliations.push(bookId);
+        return [{ id: bookId }];
+      }
       const sql = strings.join('?');
       if (sql.includes('FROM users')) {
         assert.equal(sql, 'SELECT id FROM users WHERE id = ?::uuid FOR UPDATE');
@@ -169,14 +176,10 @@ function cancellationFixture(options: {
         const target = entries.find(e => e.id === cancelId && e.userId === userId && e.bookId === bookId);
         return target ? { ...target, ...options.revalidated } : null;
       },
-      async count(args: Prisma.QueueEntryCountArgs) {
-        const where = args.where!; assert.equal(where.bookId, bookId); assert.equal(where.closedAt, null);
-        if (where.state === 'OFFERED') {
-          assert.deepEqual(where.NOT, { reservation: { is: { state: 'HELD', closedAt: null, offeredAt: { lte: now }, expiresAt: { gt: now } } } });
-          return options.pendingOffers ?? 0;
-        }
-        assert.equal(where.state, 'WAITING');
-        return entries.filter(e => e.bookId === bookId && e.state === 'WAITING' && e.closedAt === null).length;
+      async findMany(args: Prisma.QueueEntryFindManyArgs) {
+        assert.deepEqual(args.where!.bookId, { in: [bookId] });
+        assert.equal(args.where!.state, 'REJECTED_LIMIT');
+        return [];
       },
       async updateMany(args: Prisma.QueueEntryUpdateManyArgs) {
         writes.push(args);
@@ -189,19 +192,16 @@ function cancellationFixture(options: {
         return { count: 1 };
       },
     },
-    book: { async findUnique(args: Prisma.BookFindUniqueArgs) {
-      assert.deepEqual(args, { where: { id: bookId }, select: { totalCopies: true } });
-      return { totalCopies: options.totalCopies ?? 1 };
+    book: { async findMany(args: Prisma.BookFindManyArgs) {
+      assert.deepEqual(args.where, { id: { in: [bookId] } });
+      assert.equal(changes.length, 1);
+      return [{ id: bookId, title: 'Libro', totalCopies: options.totalCopies ?? 1,
+        _count: { loans: options.activeBookLoans ?? 1, reservations: options.held ?? 0 }, queueEntries: [] }];
     } },
-    loan: { async count(args: Prisma.LoanCountArgs) {
-      const where = args.where!; assert.equal(where.bookId, bookId); assert.equal(where.closedAt, null);
-      // Salir no consulta la cantidad de préstamos del titular ni sus otros libros.
-      assert.equal('userId' in where, false);
-      if (where.startedAt) {
-        assert.deepEqual(where.startedAt, { lte: now }); assert.deepEqual(where.dueAt, { gt: now });
-        return options.activeBookLoans ?? 1;
-      }
-      assert.deepEqual(where.dueAt, { lte: now }); return options.expiredLoans ?? 0;
+    loan: { async updateMany(args: Prisma.LoanUpdateManyArgs) {
+      assert.deepEqual(args, { where: { bookId: { in: [bookId] }, closedAt: null, dueAt: { lte: now } }, data: { closedAt: now } });
+      if (options.reconciliationError) throw options.reconciliationError;
+      return { count: 0 };
     } },
     reservation: {
       async findUnique(args: Prisma.ReservationFindUniqueArgs) {
@@ -215,17 +215,12 @@ function cancellationFixture(options: {
           offeredAt: at(-50), expiresAt: new Date(at(-50).getTime() + 24 * 3_600_000), closedAt: now,
         } : null);
       },
-      async count(args: Prisma.ReservationCountArgs) {
-        const where = args.where!; assert.equal(where.bookId, bookId); assert.equal(where.state, 'HELD');
-        if (where.OR) return options.incoherent ?? 0;
-        if ('gt' in (where.expiresAt as object)) {
-          assert.deepEqual(where.expiresAt, { gt: now }); assert.equal(where.closedAt, null);
-          return options.held ?? 0;
-        }
-        assert.deepEqual(where.expiresAt, { lte: now }); return options.expiredReservations ?? 0;
+      async findMany(args: Prisma.ReservationFindManyArgs) {
+        assert.deepEqual(args.where, { bookId: { in: [bookId] }, state: 'HELD', expiresAt: { lte: now } });
+        return [];
       },
     },
-    // No hay métodos para escribir reservas, avisos, préstamos ni nuevas entradas.
+    // El doble no representa ofertas ni rollback SQL: esa cobertura usa PGlite.
   };
   const database = { async $transaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, settings: unknown) {
     transactions.push(settings); changes.length = 0;
@@ -239,7 +234,7 @@ function cancellationFixture(options: {
     } finally { changes.length = 0; }
   } };
   return { repository: new QueueRepository(database as unknown as Pick<PrismaClient, '$transaction'>),
-    entries, reads, locks, writes, transactions };
+    entries, reads, locks, writes, transactions, reconciliations };
 }
 
 test('cancelar WAITING usa una transacción, orden usuario→libro, relectura y reloj PG; conserva las otras entradas', async () => {
@@ -248,7 +243,8 @@ test('cancelar WAITING usa una transacción, orden usuario→libro, relectura y 
   const original = structuredClone(f.entries);
   assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { closed: true });
   assert.equal(f.transactions.length, 1); assert.deepEqual(f.locks, ['user', 'book']);
-  assert.deepEqual(f.reads, ['locate', 'revalidate', 'clock']); assert.equal(f.writes.length, 1);
+  assert.deepEqual(f.reads, ['locate', 'revalidate', 'clock', 'clock']); assert.equal(f.writes.length, 1);
+  assert.deepEqual(f.reconciliations, [bookId]);
   assert.deepEqual(f.entries[0], { ...original[0], state: 'CANCELLED', closedAt: now });
   assert.deepEqual(f.entries[1], original[1]);
   assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { closed: true });
@@ -337,13 +333,13 @@ for (const error of [
   });
 }
 
-for (const options of [{ expiredLoans: 1 }, { expiredReservations: 1 }, { pendingOffers: 1 }, { activeBookLoans: 0 }]) {
-  test(`cancelación con conciliación pendiente no escribe: ${Object.keys(options)}`, async () => {
-    const f = cancellationFixture(options); const original = structuredClone(f.entries);
-    assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { code: 'CIRCULATION_RECONCILIATION_REQUIRED' });
-    assert.deepEqual(f.writes, []); assert.deepEqual(f.entries, original);
-  });
-}
+test('fallo de conciliación posterior al cierre se propaga y no confirma la cancelación', async () => {
+  const error = new Error('conciliación fallida');
+  const f = cancellationFixture({ reconciliationError: error }); const original = structuredClone(f.entries);
+  await assert.rejects(f.repository.cancelQueue(userId, cancelId), caught => caught === error);
+  assert.deepEqual(f.reconciliations, [bookId]); assert.equal(f.writes.length, 1);
+  assert.deepEqual(f.entries, original);
+});
 
 test('una reserva vigente de otra entrada puede ocupar el cupo sin ser modificada', async () => {
   const f = cancellationFixture({ activeBookLoans: 0, held: 1 });
@@ -353,7 +349,7 @@ test('una reserva vigente de otra entrada puede ocupar el cupo sin ser modificad
 
 test('salir no exige elegibilidad para entrar: ninguna consulta de límite del estudiante', async () => {
   const f = cancellationFixture();
-  // El doble rechaza cualquier conteo por userId; tener cinco préstamos no es un filtro de salida.
+  // No se exige elegibilidad al saliente; la conciliación valida a los sucesores.
   assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { closed: true });
 });
 
@@ -371,7 +367,7 @@ for (const error of [{ code: 'P2034' }, { code: '40P01' }, { cause: { originalCo
     const f = cancellationFixture({ updateErrors: [error] });
     assert.deepEqual(await f.repository.cancelQueue(userId, cancelId), { closed: true });
     assert.equal(f.transactions.length, 2); assert.deepEqual(f.locks, ['user', 'book', 'user', 'book']);
-    assert.equal(f.reads.filter(read => read === 'clock').length, 2);
+    assert.equal(f.reads.filter(read => read === 'clock').length, 3);
   });
 }
 
@@ -404,7 +400,6 @@ test('cero filas afectadas no se interpreta como cancelación exitosa', async ()
 });
 
 for (const options of [{ clock: null }, { clock: new Date(NaN) }, { missingBook: true },
-  { incoherent: 1 }, { activeBookLoans: 2 },
   { revalidated: { state: 'CANCELLED', closedAt: null } }, { revalidated: { state: 'WAITING', closedAt: now } },
   { revalidated: { state: 'UNKNOWN' } }, { revalidated: { joinedAt: at(1) } }]) {
   test(`cancelación rechaza inconsistencias sin escrituras: ${Object.keys(options)}`, async () => {
@@ -420,7 +415,7 @@ test('cancelación sin estudiante persistido devuelve AUTH_REQUIRED antes de lee
   assert.deepEqual(f.reads, []); assert.deepEqual(f.writes, []);
 });
 
-test('cancelación OFFERED integra liberación, reasignación y rollback con PGlite aislado', async t => {
+test('cancelación WAITING/OFFERED integra conciliación, reasignación y rollback con PGlite aislado', async t => {
   const fixture = await catalogDatabase(); const db = fixture.client;
   try {
     const university = await db.university.create({ data: { name: 'Universidad ficticia de cancelación' } });
@@ -446,9 +441,96 @@ test('cancelación OFFERED integra liberación, reasignación y rollback con PGl
     }
     const snapshot = async (id: string) => ({
       entries: await db.queueEntry.findMany({ where: { bookId: id }, orderBy: { orderSeq: 'asc' } }),
+      loans: await db.loan.findMany({ where: { bookId: id }, orderBy: { id: 'asc' } }),
       reservations: await db.reservation.findMany({ where: { bookId: id }, orderBy: { id: 'asc' } }),
       notices: await db.notificationOutbox.findMany({ where: { reservation: { bookId: id } }, orderBy: { id: 'asc' } }),
     });
+
+    async function waiting(count = 3, expiredLoan = false) {
+      const target = await book(); const students = []; const entries = [];
+      for (let i = 0; i < count; i++) {
+        const student = await user(); students.push(student);
+        entries.push(await db.queueEntry.create({ data: { userId: student.id, bookId: target.id } }));
+      }
+      if (expiredLoan) {
+        const borrower = await user();
+        await db.$executeRaw`INSERT INTO loans (id, user_id, book_id, started_at, due_at)
+          VALUES (gen_random_uuid(), ${borrower.id}::uuid, ${target.id}::uuid,
+            statement_timestamp() - interval '481 hours', statement_timestamp() - interval '1 hour')`;
+      }
+      return { target, students, entries };
+    }
+
+    for (const expiredLoan of [false, true]) {
+      await t.test(`WAITING sale antes de conciliar y ofrece al siguiente FIFO; préstamo vencido=${expiredLoan}`, async () => {
+        const f = await waiting(3, expiredLoan);
+        assert.deepEqual(await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id), { closed: true });
+        const cancelled = await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[0]!.id } });
+        assert.equal(cancelled.state, 'CANCELLED'); assert.ok(cancelled.closedAt);
+        assert.equal(await db.reservation.count({ where: { queueEntryId: cancelled.id } }), 0);
+        assert.equal(await db.notificationOutbox.count({ where: { userId: f.students[0]!.id } }), 0);
+        const successor = await db.reservation.findUniqueOrThrow({ where: { queueEntryId: f.entries[1]!.id } });
+        assert.equal(successor.state, 'HELD'); assert.equal(successor.userId, f.students[1]!.id);
+        assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[2]!.id } })).state, 'WAITING');
+        assert.equal(await db.notificationOutbox.count({ where: { reservationId: successor.id, kind: 'TURN_AVAILABLE' } }), 1);
+        if (expiredLoan) assert.ok((await db.loan.findFirstOrThrow({ where: { bookId: f.target.id } })).closedAt);
+        const before = await snapshot(f.target.id);
+        assert.deepEqual(await repository.cancelQueue(f.students[0]!.id, cancelled.id), { closed: true });
+        assert.deepEqual(await snapshot(f.target.id), before);
+      });
+    }
+
+    await t.test('WAITING sin sucesor sale aunque haya vencimientos: capacidad libre sin ofertas ficticias', async () => {
+      const f = await waiting(1, true);
+      assert.deepEqual(await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id), { closed: true });
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[0]!.id } })).state, 'CANCELLED');
+      assert.ok((await db.loan.findFirstOrThrow({ where: { bookId: f.target.id } })).closedAt);
+      assert.equal(await db.reservation.count({ where: { bookId: f.target.id } }), 0);
+      assert.equal(await db.notificationOutbox.count({ where: { userId: f.students[0]!.id } }), 0);
+    });
+
+    await t.test('WAITING ajena/inexistente no concilia ni escribe aunque haya capacidad pendiente', async () => {
+      const f = await waiting(); const before = await snapshot(f.target.id);
+      for (const id of [f.entries[0]!.id, '00000000-0000-4000-8000-000000000000']) {
+        assert.deepEqual(await repository.cancelQueue(f.students[1]!.id, id), { code: 'QUEUE_ENTRY_NOT_FOUND' });
+        assert.deepEqual(await snapshot(f.target.id), before);
+      }
+    });
+
+    await t.test('WAITING sale con una reserva vencida pendiente: expira la oferta anterior y atiende al siguiente', async () => {
+      const f = await prepare(); const offeredAt = new Date(f.held.offeredAt.getTime() - 25 * 3_600_000);
+      const expiresAt = new Date(offeredAt.getTime() + 24 * 3_600_000);
+      await db.queueEntry.update({ where: { id: f.entries[0]!.id }, data: { joinedAt: offeredAt } });
+      await db.reservation.update({ where: { id: f.held.id }, data: { offeredAt, expiresAt } });
+      assert.deepEqual(await repository.cancelQueue(f.students[1]!.id, f.entries[1]!.id), { closed: true });
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[1]!.id } })).state, 'CANCELLED');
+      assert.equal(await db.reservation.count({ where: { queueEntryId: f.entries[1]!.id } }), 0);
+      const expired = await db.reservation.findUniqueOrThrow({ where: { id: f.held.id } });
+      assert.equal(expired.state, 'EXPIRED'); assert.deepEqual(expired.expiresAt, expiresAt);
+      assert.equal((await db.queueEntry.findUniqueOrThrow({ where: { id: f.entries[0]!.id } })).state, 'EXPIRED');
+      const successor = await db.reservation.findUniqueOrThrow({ where: { queueEntryId: f.entries[2]!.id } });
+      assert.equal(successor.state, 'HELD');
+      assert.equal(await db.notificationOutbox.count({ where: { reservationId: successor.id, kind: 'TURN_AVAILABLE' } }), 1);
+    });
+
+    for (const table of ['loans', 'reservations', 'notification_outbox'] as const) {
+      await t.test(`WAITING: fallo de conciliación en ${table} revierte cierre y todos los efectos`, async () => {
+        const f = await waiting(3, true); const before = await snapshot(f.target.id);
+        await db.$executeRawUnsafe(`CREATE FUNCTION fail_waiting_cancellation() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN RAISE EXCEPTION 'SCRUM24_WAITING_ROLLBACK'; END; $$`);
+        try {
+          await db.$executeRawUnsafe(`CREATE TRIGGER fail_waiting_cancellation BEFORE ${table === 'loans' ? 'UPDATE' : 'INSERT'} ON ${table}
+            FOR EACH ROW EXECUTE FUNCTION fail_waiting_cancellation()`);
+          await assert.rejects(repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id));
+          assert.deepEqual(await snapshot(f.target.id), before);
+        } finally {
+          await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS fail_waiting_cancellation ON ${table}`);
+          await db.$executeRawUnsafe('DROP FUNCTION fail_waiting_cancellation()');
+        }
+        assert.deepEqual(await repository.cancelQueue(f.students[0]!.id, f.entries[0]!.id), { closed: true });
+        assert.equal(await db.reservation.count({ where: { queueEntryId: f.entries[0]!.id } }), 0);
+      });
+    }
 
     await t.test('propia HELD: cancela, ofrece al siguiente por FIFO y registra un aviso sin revelar su identidad', async () => {
       const f = await prepare();
