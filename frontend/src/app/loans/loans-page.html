@@ -30,6 +30,7 @@
         <a pButton variant="outlined" routerLink="/catalogo">Explorar catálogo</a>
       }
       @case ('authenticated') {
+        @if (acceptanceMessage()) { <p-message severity="info" role="status">{{ acceptanceMessage() }}</p-message> }
         <div class="content-section-header">
           <h2 id="loans-state-title">Tus lecturas, en un solo lugar</h2>
           <p-button label="Actualizar" variant="outlined" type="button" (onClick)="load()"
@@ -55,11 +56,14 @@
                   <p>Aceptá tu reserva antes del <time [attr.datetime]="reservation.expiresAt">{{ date(reservation.expiresAt) }}</time>.</p>
                   <p class="remaining">Tiempo restante: {{ remaining(reservation.expiresAt) }}</p>
                 </div>
-                <div>
+                <div class="reserve-actions">
                   <p-tag severity="success" value="Cupo reservado" />
+                  <app-accept-reservation #acceptance [reservationId]="reservation.id"
+                    [blocked]="selectedEntry()?.entryId === reservation.queueEntryId"
+                    (settled)="acceptanceMessage.set($event)" />
                   <p-button class="leave-queue-action" label="Salir de la cola" type="button" severity="secondary" variant="outlined"
                     [ariaLabel]="'Salir de la cola de ' + reservation.book.title" aria-controls="leave-queue-dialog"
-                    [disabled]="cancelPending() || auth.authenticating() || auth.loggingOut()"
+                    [disabled]="acceptance.pending() || cancelPending() || auth.authenticating() || auth.loggingOut()"
                     (onClick)="askToLeave(reservation, $event)" />
                 </div>
               </article>

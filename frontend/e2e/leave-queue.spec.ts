@@ -105,8 +105,8 @@ test('solo muestra salidas para esperas propias; no permite seleccionar un ident
   await expect(page.locator('.waiting-item strong')).toHaveText(['3', '5']);
   await expect(page.locator('.waiting-item p-button button')).toHaveCount(2);
   await expect(page.locator('.reserve-row')).toContainText('Reserva vigente de Ana');
-  await expect(page.locator('.reserve-row button')).toHaveAccessibleName('Salir de la cola de Reserva vigente de Ana');
-  await expect(page.locator('.reserve-row button')).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Salir de la cola de Reserva vigente de Ana', exact: true })).toHaveAccessibleName('Salir de la cola de Reserva vigente de Ana');
+  await expect(page.getByRole('button', { name: 'Salir de la cola de Reserva vigente de Ana', exact: true })).toBeEnabled();
   await expect(page.getByText(foreignId, { exact: true })).toHaveCount(0);
   const dialog = await openConfirmation(page);
   await dialog.getByRole('button', { name: 'Confirmar salida', exact: true }).click();

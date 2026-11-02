@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, linkedSignal, signal, untracked, viewChildren } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -14,6 +14,7 @@ import { DialogModule } from 'primeng/dialog';
 import { QueueService } from './queue-service';
 import type { CirculationBook, PersonalReservation, PersonalWait } from './loan-query.types';
 import { finalize, type Subscription } from 'rxjs';
+import { AcceptReservation } from './accept-reservation';
 
 interface CancellationTarget {
   readonly entryId: string;
@@ -23,7 +24,7 @@ interface CancellationTarget {
 
 @Component({
   selector: 'app-loans-page',
-  imports: [RouterLink, ButtonModule, ProgressSpinnerModule, MessageModule, TagModule, ReadBookButton, DialogModule],
+  imports: [RouterLink, ButtonModule, ProgressSpinnerModule, MessageModule, TagModule, ReadBookButton, DialogModule, AcceptReservation],
   templateUrl: './loans-page.html',
   styleUrl: './loans-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,6 +37,8 @@ export class LoansPage {
   protected readonly data = this.queries.data;
   protected readonly loans = this.queries.loans;
   protected readonly reservations = this.queries.reservations;
+  protected readonly acceptanceMessage = linkedSignal({ source: this.auth.session, computation: () => '' });
+  private readonly acceptors = viewChildren(AcceptReservation);
   private readonly queue = inject(QueueService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly document = inject(DOCUMENT);
@@ -70,6 +73,7 @@ export class LoansPage {
   protected askToLeave(item: PersonalWait | PersonalReservation, event: Event): void {
     if (this.cancelPending() || this.selection() || this.loading() || !this.auth.ensureAuthenticated()) return;
     const owner = this.owner();
+    if ('queueEntryId' in item && this.acceptancePending(item.id)) return;
     const current = 'queueEntryId' in item
       ? this.reservations().find(reservation => reservation.id === item.id && reservation.queueEntryId === item.queueEntryId)
       : this.data()?.waits.find(wait => wait.id === item.id);
@@ -96,6 +100,9 @@ export class LoansPage {
   protected confirmCancellation(): void {
     const entry = this.selectedEntry(); const owner = this.owner();
     if (!entry || !owner || this.cancelPending() || !this.auth.ensureAuthenticated()) return;
+    if (entry.kind === 'reservation' && this.acceptors().some(acceptor =>
+      acceptor.pending() && this.reservations().some(reservation =>
+        reservation.id === acceptor.reservationId() && reservation.queueEntryId === entry.entryId))) return;
     const generation = ++this.cancelGeneration;
     const current = () => generation === this.cancelGeneration && owner === this.owner() && this.selectedEntry()?.entryId === entry.entryId;
     this.cancelPending.set(true); this.cancelError.set('');
@@ -129,6 +136,10 @@ export class LoansPage {
     this.cancelGeneration++;
     this.cancelRequest?.unsubscribe(); this.cancelRequest = undefined;
     this.cancelPending.set(false); this.cancelError.set(''); this.selection.set(null);
+  }
+
+  private acceptancePending(reservationId: string): boolean {
+    return this.acceptors().some(acceptor => acceptor.reservationId() === reservationId && acceptor.pending());
   }
 
   protected focusKeepWaiting(): void {
