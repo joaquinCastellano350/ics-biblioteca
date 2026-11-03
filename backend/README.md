@@ -2,7 +2,37 @@
 
 Workspace `@ics-biblioteca/backend`: Express 5, TypeScript estricto y módulos ESM. Desarrollo con tsx, compilación con tsc y pruebas con el runner de Node.js. PostgreSQL en Neon se consulta mediante Prisma ORM 7 y su adaptador para node-postgres (`pg`), con un pool compartido para el proceso persistente de Express.
 
+SCRUM-22 agrega el [acceso firmado al PDF de un préstamo vigente](../docs/scrum-22-lectura.md)
+en `POST /api/loans/:loanId/read-access`. Reutiliza las credenciales de almacenamiento
+y las tablas existentes; no aplica migraciones ni crea préstamos.
+
+SCRUM-28 incorpora los [recordatorios durables de préstamos](../docs/scrum-28-avisos.md).
+`npm run notifications:deliver --workspace backend` procesa hasta 20 avisos con
+Resend desde un proceso externo. Requiere la migración `notification_delivery_window`,
+`DATABASE_URL`, `RESEND_API_KEY`, `MAIL_FROM` y `PUBLIC_WEB_ORIGIN`. El workflow
+horario se habilita con `NOTIFICATIONS_ENABLED=true` después de configurar sus
+secretos. Los reintentos conservan la clave; fuera de la ventana segura del
+proveedor quedan para revisión sin provocar un segundo envío automático.
+
+Los cinco avisos comparten la [plantilla HTML](src/notifications/templates/notification.html)
+de UniRead, con alternativa de texto y escape de variables. El build copia la
+plantilla junto al código compilado. La [guía de pruebas de SCRUM-28](../docs/scrum-28-pruebas.md)
+documenta los escenarios de recuperación y concurrencia con PostgreSQL local;
+`npm run test:notifications:integration --workspace backend` exige un destino
+exclusivo de prueba y no utiliza la conexión de Neon ni envía correos reales.
+
 Requiere Node.js 24.15 o superior dentro de la rama 24 y npm 11 o superior. Instalar desde la raíz con `npm ci`.
+
+## Turnos y reservas (SCRUM-25)
+
+La [conciliación compartida](../docs/scrum-25-turnos.md) asigna reservas de 24 horas,
+rechaza por límite al llegar el turno y registra ambos avisos en la misma
+transacción. Se integra con catálogo, préstamos, cola y consulta personal.
+`npm run circulation:reconcile --workspace backend` procesa un lote sin iniciar
+Express ni enviar correos; su workflow externo requiere `CIRCULATION_ENABLED`
+y `CIRCULATION_DATABASE_URL`. Reutiliza el emisor de SCRUM-28 para entregar avisos.
+`npm run test:turns:integration --workspace backend` verifica contención en una
+base PostgreSQL 17 local exclusiva. No se agregan migraciones en esta historia.
 
 ## Variables de entorno
 
@@ -59,7 +89,7 @@ El 22/10/2026 se aplicó la migración del catálogo a la rama `production` de N
 conservando la migración de cuentas que ya estaba aplicada. Ver el
 [registro de aplicación y verificación](../docs/migracion-catalogo-neon.md).
 
-El esquema Prisma incluye `universities`, `users` y `sessions`, alineados con Confluence v4. La primera migración conserva un solo `email` normalizado y único, las FK y el vencimiento absoluto de seis horas. La sesión guarda solo el SHA-256 del token; las contraseñas usan Argon2id. Las tablas de circulación pertenecen a historias posteriores.
+El esquema Prisma incluye `universities`, `users` y `sessions`, alineados con Confluence v4. La primera migración conserva un solo `email` normalizado y único, las FK y el vencimiento absoluto de seis horas. La sesión guarda solo el SHA-256 del token; las contraseñas usan Argon2id. SCRUM-18 incorpora además `loans`, `queue_entries` y `reservations` en una nueva migración, aplicada a `production` de Neon el 26/10/2026; ver [la base compartida de circulación y la verificación](../docs/scrum-18-persistencia.md).
 
 El módulo único `src/accounts/` contiene registro y login. `accounts.controller.ts` reúne rutas, cookies y middleware HTTP; `accounts.service.ts` y `registration.service.ts` coordinan sus respectivos contratos de persistencia. Ambos usan `credentials.ts`, `sessions.ts`, `auth.response.ts` y `account-error.ts`. Los adaptadores Prisma llaman a `prisma-session.ts` dentro de su transacción: crear la sesión y revocar la anterior son atómicos; registro incluye además crear el usuario. El reloj de PostgreSQL determina las seis horas y el atributo `Expires` de la cookie. `server.ts` conecta ambos servicios a la misma base.
 
@@ -99,3 +129,19 @@ Con `NODE_ENV=production`, `server.ts` detecta el build de Angular en
 `/api`. Las rutas públicas de Angular
 se resuelven con `index.html`; una ruta API inexistente sigue devolviendo JSON
 404 y no recibe el HTML de la aplicación.
+
+## Base compartida de circulación — SCRUM-18
+
+`src/circulation/` reúne el contrato de ocupación y disponibilidad, la interfaz
+de repositorio, su lectura Prisma/PostgreSQL y el controlador del conteo.
+La consulta utiliza el reloj de PostgreSQL y descuenta ocupaciones vigentes y la
+capacidad pendiente para las esperas elegibles. Su única escritura es pasar una
+entrada a REJECTED_LIMIT con `closed_at` si tiene cinco préstamos al llegar su
+turno. No crea reservas, cierra vencimientos ni registra avisos.
+Ver [el arreglo puntual por límite](../docs/scrum-18-rechazo-limite.md).
+
+No expone rutas nuevas. `GET /api/books` reúne metadatos y disponibilidad por lote
+en una respuesta pública; la tarjeta muestra el conteo y el grisado. Los métodos de
+préstamos, cola, turnos, vencimientos y notificaciones se incorporarán en sus
+historias, reutilizando la persistencia y esta carpeta. SCRUM-23 queda pendiente
+de desarrollo e integración por su responsable.

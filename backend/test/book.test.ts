@@ -4,12 +4,17 @@ import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { createApp } from '../src/app.js';
 import type { BookRepositoryInterface } from '../src/book/book-repository-interface.js';
+import type { CirculationRepositoryInterface } from '../src/circulation/circulation-repository-interface.js';
 
-async function withCatalog(books: BookRepositoryInterface, check: (url: string) => Promise<void>) {
+async function withCatalog(books: BookRepositoryInterface, check: (url: string) => Promise<void>,
+  circulation: CirculationRepositoryInterface = {
+    findOccupancy: async (ids) => ids.map((bookId) => ({ bookId, totalCopies: 4, activeLoans: 1, heldReservations: 1, eligibleWaiters: 0 })),
+  }) {
   const app = createApp({
     checkDatabase: async () => {},
     checkStorage: async () => {},
     books,
+    circulation,
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -45,20 +50,25 @@ test('el catálogo público conserva todos los libros y metadatos y oculta datos
   ];
   let receivedCriteria: unknown;
   await withCatalog({
-    findAll: async (criteria) => { receivedCriteria = criteria; return books; },
+    findAll: async (criteria) => { receivedCriteria = criteria; return { books, total: books.length }; },
     findAuthors: async (query) => query ? [{ id: 'a1', name: 'Ana' }] : [],
   }, async (url) => {
     const response = await fetch(`${url}/api/books`);
     assert.equal(response.status, 200);
     const result = await response.json();
     assert.equal(result.books.length, 2);
+    assert.equal(result.total, 2);
     assert.equal(result.books[0].authors.length, 2);
     assert.equal(result.books[0].subjects.length, 2);
     assert.ok(!JSON.stringify(result).includes('private.pdf'));
-    assert.deepEqual(Object.keys(result.books[0]), ['id', 'title', 'authors', 'subjects']);
+    assert.deepEqual(Object.keys(result.books[0]), ['id', 'title', 'authors', 'subjects', 'availability']);
+    assert.deepEqual(result.books[0].availability, { availableCopies: 2, totalCopies: 4 });
     const filtered = await fetch(`${url}/api/books?title=red%20parcial&authorIds=a1&authorIds=a3`);
     assert.equal(filtered.status, 200);
-    assert.deepEqual(receivedCriteria, { title: 'red parcial', authorIds: ['a1', 'a3'] });
+    assert.deepEqual(receivedCriteria, { title: 'red parcial', authorIds: ['a1', 'a3'], page: 1 });
+    const secondPage = await fetch(`${url}/api/books?page=2`);
+    assert.equal(secondPage.status, 200);
+    assert.deepEqual(receivedCriteria, { page: 2 });
     const authors = await fetch(`${url}/api/authors?q=ana`);
     assert.equal(authors.status, 200);
     assert.deepEqual(await authors.json(), { authors: [{ id: 'a1', name: 'Ana' }] });
@@ -66,20 +76,21 @@ test('el catálogo público conserva todos los libros y metadatos y oculta datos
 });
 
 test('un catálogo vacío es una colección válida, no un fallo', async () => {
-  await withCatalog({ findAll: async () => [], findAuthors: async () => [] }, async (url) => {
+  await withCatalog({ findAll: async () => ({ books: [], total: 0 }), findAuthors: async () => [] }, async (url) => {
     const response = await fetch(`${url}/api/books`);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { books: [] });
+    assert.deepEqual(await response.json(), { books: [], total: 0 });
   });
 });
 
 test('books endpoint accepts title, author IDs, and repeated subject IDs', async () => {
-  let received: { title?: string; authorIds?: readonly string[]; subjectIds?: readonly string[] } | undefined;
+  let received: { title?: string; authorIds?: readonly string[]; subjectIds?: readonly string[]; page?: number } | undefined;
   await withCatalog({
     findAll: async (criteria) => {
       received = criteria;
-      return [];
+      return { books: [], total: 0 };
     },
+    findAuthors: async () => [],
   }, async (url) => {
     const response = await fetch(
       `${url}/api/books?title=Redes&authorIds=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&subjectIds=11111111-1111-4111-8111-111111111111&subjectIds=22222222-2222-4222-8222-222222222222`,
@@ -89,10 +100,16 @@ test('books endpoint accepts title, author IDs, and repeated subject IDs', async
       title: 'Redes',
       authorIds: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
       subjectIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+      page: 1,
     });
     const invalid = await fetch(`${url}/api/books?subjectIds=not-a-uuid`);
     assert.equal(invalid.status, 400);
     assert.deepEqual(await invalid.json(), { error: { code: 'INVALID_QUERY' } });
+    for (const value of ['0', '-1', '1.5', 'abc', '9007199254740992', '9007199254740991']) {
+      const invalidPage = await fetch(`${url}/api/books?page=${encodeURIComponent(value)}`);
+      assert.equal(invalidPage.status, 400);
+      assert.deepEqual(await invalidPage.json(), { error: { code: 'INVALID_QUERY' } });
+    }
   });
 });
 
@@ -115,10 +132,77 @@ test('un error del repositorio devuelve 503 sin revelar detalles de Prisma o Neo
 });
 
 test('SCRUM-13 no expone escrituras ni una ficha de detalle', async () => {
-  await withCatalog({ findAll: async () => [], findAuthors: async () => [] }, async (url) => {
+  await withCatalog({ findAll: async () => ({ books: [], total: 0 }), findAuthors: async () => [] }, async (url) => {
     const response = await fetch(`${url}/api/books`, { method: 'POST' });
     assert.equal(response.status, 405);
     assert.equal(response.headers.get('allow'), 'GET');
     assert.equal((await fetch(`${url}/api/books/1`)).status, 404);
   });
+});
+
+test('el catálogo consulta disponibilidad en un solo lote y solo expone el conteo público', async () => {
+  const ids = ['uno', 'dos'];
+  let calls = 0;
+  await withCatalog({
+    findAll: async () => ({ books: ids.map((id) => ({ id, title: id, authors: [], subjects: [] })), total: ids.length }),
+    findAuthors: async () => [],
+  }, async (url) => {
+    const response = await fetch(`${url}/api/books`);
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(calls, 1);
+    assert.deepEqual(result.books.map((book: { availability: unknown }) => book.availability), [
+      { availableCopies: 0, totalCopies: 2 }, { availableCopies: 0, totalCopies: 2 },
+    ]);
+    assert.ok(!JSON.stringify(result).includes('eligibleWaiters'));
+    assert.equal((await fetch(`${url}/api/availability`)).status, 404);
+  }, {
+    findOccupancy: async (bookIds) => {
+      calls++;
+      assert.deepEqual(bookIds, ids);
+      return bookIds.map((bookId) => ({ bookId, totalCopies: 2, activeLoans: 1, heldReservations: 1, eligibleWaiters: 0 }));
+    },
+  });
+});
+
+test('la API pública devuelve solo la página solicitada con su total, metadatos y disponibilidad', async () => {
+  const books = Array.from({ length: 13 }, (_, index) => ({
+    id: `id-${index}`, title: `Libro ${index}`, authors: [{ id: 'author', name: 'Autora' }],
+    subjects: [{ id: 'subject', name: 'Materia' }],
+  }));
+  let availabilityIds: readonly string[] = [];
+  await withCatalog({
+    findAll: async (criteria) => ({ books: books.slice(((criteria?.page ?? 1) - 1) * 12, (criteria?.page ?? 1) * 12), total: 13 }),
+    findAuthors: async () => [],
+  }, async (url) => {
+    const response = await fetch(`${url}/api/books?page=2`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.total, 13);
+    assert.equal(body.books.length, 1);
+    assert.deepEqual(availabilityIds, ['id-12']);
+    assert.deepEqual(body.books[0], {
+      ...books[12], availability: { availableCopies: 2, totalCopies: 4 },
+    });
+  }, {
+    findOccupancy: async (ids) => {
+      availabilityIds = ids;
+      return ids.map((bookId) => ({ bookId, totalCopies: 4, activeLoans: 1, heldReservations: 1, eligibleWaiters: 0 }));
+    },
+  });
+});
+
+test('un fallo o un resultado incompleto de disponibilidad no inventa cupos', async () => {
+  for (const fail of [false, true]) {
+    await withCatalog({
+      findAll: async () => ({ books: [{ id: 'uno', title: 'Libro', authors: [], subjects: [] }], total: 1 }),
+      findAuthors: async () => [],
+    }, async (url) => {
+      const response = await fetch(`${url}/api/books`);
+      assert.equal(response.status, 503);
+      const body = await response.text();
+      assert.equal(JSON.parse(body).error.code, 'CATALOG_UNAVAILABLE');
+      assert.ok(!body.includes('privado'));
+    }, { findOccupancy: async () => { if (fail) throw new Error('detalle privado'); return []; } });
+  }
 });

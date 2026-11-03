@@ -11,6 +11,21 @@ import { authorRoutes } from './book/author-routes.js';
 import type { SubjectRepositoryInterface } from './subject/subject-repository-interface.js';
 import { SubjectController } from './subject/subject-controller.js';
 import { subjectRoutes } from './subject/subject-routes.js';
+import type { CirculationRepositoryInterface } from './circulation/circulation-repository-interface.js';
+import { CirculationController } from './circulation/circulation-controller.js';
+import type { LoanRepositoryInterface } from './circulation/loan.js';
+import { loanRoutes } from './circulation/loan-routes.js';
+import type { CirculationQueryRepositoryInterface } from './circulation/circulation-query.js';
+import { circulationQueryRoutes } from './circulation/circulation-query-routes.js';
+import type { QueueRepositoryInterface } from './circulation/queue.js';
+import { queueRoutes } from './circulation/queue-routes.js';
+import type { LoanReadingRepositoryInterface } from './loan/loan-repository-interface.js';
+import type { PdfAccessSigner } from './loan/loan.js';
+import { LoanController } from './loan/loan-controller.js';
+import { loanReadingRoutes } from './loan/loan-routes.js';
+import type { ReservationRepositoryInterface } from './circulation/reservation.js';
+import { ReservationController } from './circulation/reservation-controller.js';
+import { reservationRoutes } from './circulation/reservation-routes.js';
 
 interface AppServices {
   checkDatabase: () => Promise<void>;
@@ -20,6 +35,13 @@ interface AppServices {
   listUniversities?: () => Promise<PublicUser['university'][]>;
   production?: boolean;
   books?: BookRepositoryInterface;
+  circulation?: CirculationRepositoryInterface;
+  loans?: LoanRepositoryInterface;
+  reservations?: ReservationRepositoryInterface;
+  circulationQueries?: CirculationQueryRepositoryInterface;
+  queue?: QueueRepositoryInterface;
+  loanReading?: LoanReadingRepositoryInterface;
+  pdfAccess?: PdfAccessSigner;
   subjects?: SubjectRepositoryInterface;
   frontendDirectory?: string;
 }
@@ -27,9 +49,13 @@ interface AppServices {
 export function createApp(services: AppServices) {
   const app = express();
   app.disable('x-powered-by');
+  if (services.accounts && services.loanReading && services.pdfAccess) {
+    app.use('/api/loans', loanReadingRoutes(services.accounts, new LoanController(services.loanReading, services.pdfAccess)));
+  }
 
   if (services.books) {
-    const controller = new BookController(services.books);
+    const controller = new BookController(services.books,
+      services.circulation ? new CirculationController(services.circulation) : undefined);
     app.use('/api/books', bookRoutes(controller));
     app.use('/api/authors', authorRoutes(controller));
   }
@@ -53,6 +79,14 @@ export function createApp(services: AppServices) {
   app.use('/api', accountsController(
     services.accounts, services.production ?? false, services.registrationService, services.listUniversities,
   ));
+  if (services.accounts && services.loans) app.use('/api/loans', loanRoutes(services.accounts, services.loans));
+  if (services.accounts && services.reservations) {
+    app.use('/api/reservations', reservationRoutes(services.accounts, new ReservationController(services.reservations)));
+  }
+  if (services.accounts && services.queue) app.use('/api/queue-entries', queueRoutes(services.accounts, services.queue));
+  if (services.accounts && services.circulationQueries) {
+    app.use('/api', circulationQueryRoutes(services.accounts, services.circulationQueries));
+  }
   app.use('/api', (_request, response) => {
     response.status(404).json({ error: { code: 'NOT_FOUND', message: 'No se encontró el recurso.' } });
   });

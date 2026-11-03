@@ -1,4 +1,5 @@
-<article class="book-card" [attr.aria-labelledby]="'book-' + book().id">
+<article class="book-card" [class.unavailable]="book().availability.availableCopies === 0"
+  [attr.aria-labelledby]="'book-' + book().id">
   <p-card
     [style]="{ height: '100%' }"
     [dt]="{ root: { borderRadius: '14px', shadow: 'none' }, body: { padding: '26px' } }"
@@ -26,5 +27,34 @@
         }
       </ul>
     </div>
+    <div class="availability" [class.no-copies]="book().availability.availableCopies === 0">
+      <h3>Disponibilidad</h3>
+      <p><strong>{{ book().availability.availableCopies }}/{{ book().availability.totalCopies }}</strong> cupos disponibles</p>
+      @if (book().availability.availableCopies === 0) {
+        <p class="availability-note">Sin cupos disponibles</p>
+      }
+    </div>
+    @if (personal(); as state) {
+      <div class="personal-state">
+        <p-tag [severity]="state.checking ? 'secondary' : 'info'" [value]="state.label" />
+        @if (state.detail) { <p>{{ state.detail }}</p> }
+      </div>
+    }
+    @if (loanId(); as readableLoanId) {
+      <app-read-book-button [loanId]="readableLoanId" (unavailable)="readingUnavailable.emit()" />
+    } @else {
+      <p-button styleClass="request-loan" label="Solicitar préstamo" [fluid]="true" type="button"
+        [disabled]="!!disabledReason()" [loading]="personal()?.checking ?? false"
+        [ariaLabel]="'Solicitar préstamo de ' + book().title" (onClick)="request()"
+        [pt]="{ root: { 'aria-describedby': disabledReason() ? 'loan-reason-' + book().id : undefined } }" />
+      @if (disabledReason()) { <p class="request-reason" [id]="'loan-reason-' + book().id">{{ disabledReason() }}</p> }
+    }
+    @if (book().availability.availableCopies === 0) {
+      <p-button label="Unirse a la cola" [fluid]="true" type="button" severity="secondary"
+        [disabled]="!!queueDisabledReason()" [loading]="personal()?.checking ?? false"
+        [ariaLabel]="'Unirse a la cola de ' + book().title" (onClick)="requestQueue()"
+        [pt]="{ root: { 'aria-describedby': queueDisabledReason() ? 'queue-reason-' + book().id : undefined } }" />
+      @if (queueDisabledReason()) { <p class="request-reason" [id]="'queue-reason-' + book().id">{{ queueDisabledReason() }}</p> }
+    }
   </p-card>
 </article>

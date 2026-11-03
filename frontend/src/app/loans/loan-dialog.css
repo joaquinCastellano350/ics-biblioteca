@@ -1,0 +1,5 @@
+.book-title { font-family: Manrope, sans-serif; font-weight: 750; overflow-wrap: anywhere; }
+p { line-height: 1.65; }
+.muted { color: var(--bdu-muted); font-size: 0.85rem; }
+.actions { display: grid; gap: 8px; margin-top: 24px; }
+.due-date { margin: 24px 0; }

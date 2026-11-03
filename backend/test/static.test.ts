@@ -18,7 +18,7 @@ test('Express sirve Angular en el origen de la API y conserva los 404 de API com
     listUniversities: async () => [],
     registrationService: { register: async () => { throw new RegistrationError('VALIDATION_ERROR'); } },
     frontendDirectory: directory,
-    books: { findAll: async () => [], findAuthors: async () => [] },
+    books: { findAll: async () => ({ books: [], total: 0 }), findAuthors: async () => [] },
   }).listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -36,7 +36,7 @@ test('Express sirve Angular en el origen de la API y conserva los 404 de API com
     } });
     const catalog = await fetch(`${url}/api/books`);
     assert.equal(catalog.status, 200);
-    assert.deepEqual(await catalog.json(), { books: [] });
+    assert.deepEqual(await catalog.json(), { books: [], total: 0 });
     const universities = await fetch(`${url}/api/universities`);
     assert.equal(universities.status, 200);
     assert.deepEqual(await universities.json(), { universities: [] });

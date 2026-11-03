@@ -12,11 +12,17 @@ import { SelectModule, Select } from 'primeng/select';
 import { InputTextModule } from 'primeng/inputtext';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
-import { EMPTY, Subject, catchError, switchMap } from 'rxjs';
+import { MessageModule } from 'primeng/message';
+import { PaginatorModule, type PaginatorState } from 'primeng/paginator';
+import { EMPTY, Subject, catchError, of, switchMap, timer } from 'rxjs';
+import { AuthService } from '../auth/auth.service';
+import { LoanDialog } from '../loans/loan-dialog';
+import { LoanQueryService } from '../loans/loan-query.service';
+import type { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-catalog-page',
-  imports: [BookCard, ButtonModule, CheckboxModule, ProgressSpinnerModule, SelectModule, FormsModule, InputTextModule, IconFieldModule, InputIconModule],
+  imports: [BookCard, LoanDialog, ButtonModule, CheckboxModule, ProgressSpinnerModule, SelectModule, FormsModule, InputTextModule, IconFieldModule, InputIconModule, MessageModule, PaginatorModule],
   templateUrl: './catalog-page.html',
   styleUrl: './catalog-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -25,6 +31,101 @@ export class CatalogPage {
   @ViewChild('authorSelect') private authorSelect?: Select;
   @ViewChild('subjectSelect') private subjectSelect?: Select;
   private readonly catalog = inject(CatalogService);
+  private readonly auth = inject(AuthService);
+  readonly personal = inject(LoanQueryService);
+  readonly readingLoanIds = computed(() => new Map(this.personal.loans().map(loan => [loan.book.id, loan.id])));
+  readonly personalRequestError = computed(() => this.auth.status() === 'authenticated' && this.personal.error()
+    ? 'No pudimos comprobar tus préstamos. Reintentá para continuar' : '');
+  readonly availabilityError = signal(false);
+  readonly requestedBook = signal<Book | null>(null);
+  readonly dialogMode = signal<'loan' | 'queue'>('loan');
+  private grantedInDialog = false;
+  private availabilityRequest: Subscription | undefined;
+  private availabilityCriteria: CatalogSearchCriteria | undefined;
+  readonly titleSearchPending = signal(false);
+  readonly pageSize = 12;
+  readonly currentPage = signal(1);
+  readonly totalBooks = signal(0);
+
+  requestLoan(book: Book): void {
+    if (book.availability.availableCopies === 0 || this.personalRequestError() || this.personal.bookState(book.id)?.disabledReason) return;
+    if (this.auth.ensureAuthenticated()) {
+      this.grantedInDialog = false;
+      this.dialogMode.set('loan');
+      this.requestedBook.set(book);
+    }
+  }
+
+  requestQueue(book: Book): void {
+    if (book.availability.availableCopies !== 0 || this.personalRequestError() || this.personal.bookState(book.id)?.disabledReason) return;
+    if (this.auth.ensureAuthenticated()) {
+      this.grantedInDialog = false;
+      this.dialogMode.set('queue');
+      this.requestedBook.set(book);
+    }
+  }
+
+  onQueueJoined(): void {
+    this.onLoanGranted();
+  }
+
+  onLoanGranted(): void {
+    if (this.grantedInDialog) return;
+    this.grantedInDialog = true;
+    this.personal.invalidate();
+    this.personal.refresh();
+  }
+
+  closeLoanDialog(): void {
+    this.requestedBook.set(null);
+    if (!this.grantedInDialog) this.personal.refresh();
+    this.grantedInDialog = false;
+    this.refreshAvailability();
+  }
+
+  refreshPersonal(): void {
+    this.personal.refresh();
+    this.refreshAvailability();
+  }
+
+  @HostListener('window:focus')
+  refreshAvailability(): void {
+    // Recargar también tras un conflicto de cupos, conservando los filtros.
+    // Conserva las tarjetas para devolver el foco al botón que abrió el modal.
+    if (this.status() !== 'ready' || this.titleSearchPending()) return;
+    const criteria = { ...this.criteria, page: this.currentPage() };
+    if (this.availabilityRequest && !this.availabilityRequest.closed
+      && criteria.page === this.availabilityCriteria?.page
+      && this.sameFilters(criteria, this.availabilityCriteria)) return;
+    this.availabilityRequest?.unsubscribe();
+    this.availabilityCriteria = criteria;
+    this.availabilityError.set(false);
+    this.availabilityRequest = this.catalog.findAll(criteria).pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: ({ books, total }) => {
+        this.availabilityRequest = undefined;
+        this.availabilityCriteria = undefined;
+        if (criteria.page === this.currentPage() && this.sameFilters(criteria, this.criteria)) {
+          this.books.set(books);
+          this.totalBooks.set(total);
+          this.availabilityError.set(false);
+          const lastPage = Math.max(1, Math.ceil(total / this.pageSize));
+          if (this.currentPage() > lastPage) {
+            this.currentPage.set(lastPage);
+            this.load();
+          }
+        }
+      },
+      error: () => {
+        this.availabilityRequest = undefined;
+        this.availabilityCriteria = undefined;
+        if (criteria.page === this.currentPage() && this.sameFilters(criteria, this.criteria)) {
+          this.availabilityError.set(true);
+        }
+      },
+    });
+  }
   private readonly subjectService = inject(SubjectService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly host = inject(ElementRef<HTMLElement>);
@@ -54,35 +155,59 @@ export class CatalogPage {
   private applyOnHide = false;
   private restoreAuthorFocus = true;
   private criteria: CatalogSearchCriteria = {};
-  private readonly searches = new Subject<CatalogSearchCriteria>();
-  private readonly authorSearches = new Subject<string>();
+  private readonly searches = new Subject<{ criteria: CatalogSearchCriteria; delayed: boolean }>();
+  private readonly authorSearches = new Subject<string | null>();
 
   constructor() {
+    this.personal.connect(this.destroyRef);
     this.searches.pipe(
-      switchMap((criteria) => {
-        this.status.set('loading');
-        return this.catalog.findAll(criteria).pipe(
-          catchError(() => { this.status.set('error'); return EMPTY; }),
+      // El nuevo evento cancela inmediatamente el timer o la consulta anterior.
+      // Solo las pulsaciones esperan; filtros, limpieza y reintento son inmediatos.
+      switchMap(({ criteria, delayed }) => {
+        this.titleSearchPending.set(delayed);
+        this.availabilityRequest?.unsubscribe();
+        this.availabilityRequest = undefined;
+        this.availabilityCriteria = undefined;
+        this.availabilityError.set(false);
+        return (delayed ? timer(500) : of(0)).pipe(
+          switchMap(() => {
+            this.titleSearchPending.set(false);
+            this.status.set('loading');
+            return this.catalog.findAll({ ...criteria, page: this.currentPage() }).pipe(
+              catchError(() => { this.status.set('error'); return EMPTY; }),
+            );
+          }),
         );
       }),
       takeUntilDestroyed(this.destroyRef),
-    ).subscribe(({ books }) => {
+    ).subscribe(({ books, total }) => {
       this.books.set(books);
+      this.totalBooks.set(total);
+      const lastPage = Math.max(1, Math.ceil(total / this.pageSize));
+      if (this.currentPage() > lastPage) {
+        this.currentPage.set(lastPage);
+        this.load();
+        return;
+      }
       this.status.set('ready');
     });
-    this.searches.next({});
+    this.searches.next({ criteria: {}, delayed: false });
     this.authorSearches.pipe(
       switchMap((query) => {
-        this.authorSearchLoading.set(true);
+        this.authorSearchLoading.set(false);
         this.authorSearchError.set(false);
-        return this.catalog.searchAuthors(query).pipe(
-          catchError(() => {
-            this.authorSuggestions.set([]);
-            this.authorSearchError.set(true);
-            this.authorSearchLoading.set(false);
-            return EMPTY;
-          }),
-        );
+        if (query === null) return EMPTY;
+        return timer(500).pipe(switchMap(() => {
+          this.authorSearchLoading.set(true);
+          return this.catalog.searchAuthors(query).pipe(
+            catchError(() => {
+              this.authorSuggestions.set([]);
+              this.authorSearchError.set(true);
+              this.authorSearchLoading.set(false);
+              return EMPTY;
+            }),
+          );
+        }));
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe(({ authors }) => {
@@ -94,8 +219,6 @@ export class CatalogPage {
 
   onAuthorMenuShow(): void {
     this.draftAuthors.set([...this.selectedAuthors()]);
-    this.authorQuery.set('');
-    this.authorSuggestions.set([]);
     this.authorSearchLoading.set(false);
     this.authorSearchError.set(false);
     this.authorMenuOpen.set(true);
@@ -109,6 +232,9 @@ export class CatalogPage {
   }
 
   onAuthorMenuHide(): void {
+    this.authorSearches.next(null);
+    this.authorQuery.set('');
+    this.authorSuggestions.set([]);
     this.authorMenuOpen.set(false);
     if (!this.applyOnHide) this.draftAuthors.set([...this.selectedAuthors()]);
     this.applyOnHide = false;
@@ -117,6 +243,10 @@ export class CatalogPage {
   }
 
   searchAuthors(query: string): void {
+    if (query.trim() === this.authorQuery().trim()) {
+      this.authorQuery.set(query);
+      return;
+    }
     this.authorQuery.set(query);
     this.authorSearches.next(query);
   }
@@ -168,14 +298,17 @@ export class CatalogPage {
     this.selectedAuthors.set([...authors]);
     const { authorIds: _previousAuthorIds, ...otherCriteria } = this.criteria;
     this.criteria = authors.length ? { ...otherCriteria, authorIds: authors.map(({ id }) => id) } : otherCriteria;
-    this.searches.next(this.criteria);
+    this.currentPage.set(1);
+    this.searches.next({ criteria: this.criteria, delayed: false });
   }
 
-  searchByTitle(title: string): void {
+  searchByTitle(title: string, immediate = false): void {
     this.titleQuery.set(title);
+    if (title.trim() === (this.criteria.title ?? '').trim()) return;
     const { title: _previousTitle, ...otherCriteria } = this.criteria;
     this.criteria = title.trim() ? { ...otherCriteria, title } : otherCriteria;
-    this.searches.next(this.criteria);
+    this.currentPage.set(1);
+    this.searches.next({ criteria: this.criteria, delayed: !immediate });
   }
 
   loadSubjects(): void {
@@ -239,6 +372,7 @@ export class CatalogPage {
     this.criteria = selected.length
       ? { ...otherCriteria, subjectIds: selected.map(({ id }) => id) }
       : otherCriteria;
+    this.currentPage.set(1);
     this.load();
   }
 
@@ -260,10 +394,24 @@ export class CatalogPage {
     this.selectedSubjects.set([]);
     this.draftSubjects.set([]);
     this.criteria = {};
+    this.currentPage.set(1);
     this.load();
+  }
+  changePage(event: PaginatorState): void {
+    if (this.titleSearchPending()) return;
+    const page = Math.floor((event.first ?? 0) / this.pageSize) + 1;
+    const lastPage = Math.max(1, Math.ceil(this.totalBooks() / this.pageSize));
+    if (page < 1 || page > lastPage || page === this.currentPage()) return;
+    this.currentPage.set(page);
+    this.load();
+  }
+  private sameFilters(left: CatalogSearchCriteria, right: CatalogSearchCriteria): boolean {
+    return left.title === right.title
+      && (left.authorIds ?? []).join('|') === (right.authorIds ?? []).join('|')
+      && (left.subjectIds ?? []).join('|') === (right.subjectIds ?? []).join('|');
   }
   load(): void {
     this.status.set('loading');
-    this.searches.next(this.criteria);
+    this.searches.next({ criteria: this.criteria, delayed: false });
   }
 }

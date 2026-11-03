@@ -8,8 +8,13 @@ export interface Book {
   readonly title: string;
   readonly authors: readonly CatalogTerm[];
   readonly subjects: readonly CatalogTerm[];
+  readonly availability: {
+    readonly availableCopies: number;
+    readonly totalCopies: number;
+  };
 }
 
 export interface CatalogResponse {
   readonly books: readonly Book[];
+  readonly total: number;
 }

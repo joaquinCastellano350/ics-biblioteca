@@ -1,5 +1,11 @@
 # Frontend
 
+SCRUM-22 entrega `ReadBookButton` y `LoanReadingService` para abrir PDFs autorizados.
+Está conectado al catálogo, a la confirmación del préstamo y a la pantalla de
+«Mis préstamos» incorporada por SCRUM-21. Reutiliza `LoanQueryService` para consultar
+los préstamos propios. Ver el
+[contrato y ejemplo de integración](../docs/scrum-22-lectura.md).
+
 Workspace `@ics-biblioteca/frontend`: Angular 22, componentes standalone, PrimeNG 22, routing, CSS y salida estática. Implementa el catálogo público de SCRUM-13, el registro de SCRUM-7 y el diálogo de login de SCRUM-8. Conserva el tema `bibliotecaTheme` y las fuentes del equipo. SCRUM-6 incorpora la landing y la cabecera, navegación y pie compartidos.
 
 Las convenciones visuales fijas están en [Convenciones de UI](../docs/convenciones-ui.md): usar PrimeNG y mantener los estilos de la referencia HTML compartida.
@@ -44,7 +50,7 @@ La raíz fija Vite 8.3.3 para `@angular/build` mediante un `override`: Angular C
 
 El build de producción genera los archivos estáticos en `frontend/dist/biblioteca/browser/`. Express sirve esa carpeta y resuelve la navegación SPA después de las rutas de API. Las rutas `/api` desconocidas conservan su respuesta de API y no reciben `index.html`.
 
-`/catalogo` es público y consulta `GET /api/books`, con estados de carga, vacío, error y reintento. La raíz muestra la landing de SCRUM-6. El registro exitoso y el enlace «Volver al inicio» llevan a esa landing.
+`/catalogo` es público y consulta `GET /api/books`, con estados de carga, vacío, error y reintento. SCRUM-18 recibe metadatos y disponibilidad en esa misma respuesta: cada tarjeta muestra cupos disponibles/total y aparece grisada si no hay cupos, sin deshabilitar su contenedor. La acción de cola queda pendiente de desarrollo e integración en SCRUM-23. No hay consulta separada de disponibilidad ni actualización automática. La raíz muestra la landing de SCRUM-6. El registro exitoso y el enlace «Volver al inicio» llevan a esa landing.
 
 `AuthService` comparte la sesión en memoria y la restaura al cargar. Registro y login aceptan el mismo DTO antes de cerrar el diálogo o navegar; no guardan tokens en almacenamiento web ni necesitan otro GET para confirmar el éxito. Un bloqueo compartido serializa ambas escrituras y evita revalidaciones por foco durante ellas. Las respuestas de restauraciones anteriores se descartan mediante una generación de autenticación. Las próximas pantallas pueden usar `ensureAuthenticated()`: si devuelve `false`, no ejecutan su acción y esperan otro clic después del login. El diálogo de PrimeNG conserva la página, permite Escape y gestiona el foco.
 
